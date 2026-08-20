@@ -1,0 +1,32 @@
+{
+  "$schema": "https://raw.githubusercontent.com/grafana/grafana/main/docs/sources/developers/plugins/plugin.schema.json",
+  "type": "panel",
+  "name": "IMS 3D Digital Twin",
+  "id": "ims-3d-panel",
+  "info": {
+    "keywords": [
+      "panel"
+    ],
+    "description": "3D Digital Twin Plugin for IMS Manufacturing",
+    "author": {
+      "name": "Myorg"
+    },
+    "logos": {
+      "small": "img/logo.svg",
+      "large": "img/logo.svg"
+    },
+    "links": [],
+    "screenshots": [
+      {
+        "path": "img/layout.jpg",
+        "name": "Layout"
+      }
+    ],
+    "version": "2.6.0",
+    "updated": "2026-08-18"
+  },
+  "dependencies": {
+    "grafanaDependency": ">=12.3.0",
+    "plugins": []
+  }
+}
