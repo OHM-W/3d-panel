@@ -15,6 +15,7 @@ export interface SimpleOptions {
   showSeriesCount: boolean;
   seriesCountSize: SeriesSize;
   floorplanUrl: string;
+  floorSize: number;
 
   // ─── Edit Mode ───
   enableEditMode: boolean;

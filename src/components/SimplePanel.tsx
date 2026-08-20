@@ -132,6 +132,7 @@ export const SimplePanel: React.FC<Props> = ({ options, data, width, height, onO
   const dControlsRef   = useRef<DragControls | null>(null);
   const meshesArrayRef = useRef<THREE.Mesh[]>([]);
   const floorMatRef    = useRef<THREE.MeshStandardMaterial | null>(null);
+  const floorMeshRef   = useRef<THREE.Mesh | null>(null);
   const gridHelperRef  = useRef<THREE.GridHelper | null>(null);
 
   // ── Data refs ─────────────────────────────────────────────────────────────
@@ -182,13 +183,14 @@ export const SimplePanel: React.FC<Props> = ({ options, data, width, height, onO
     }
     if (options.enableGrid) {
       const gs = Math.max(0.1, options.gridSize || 1);
-      const divisions = Math.round(50 / gs);
-      const helper = new THREE.GridHelper(50, divisions, 0x3a3a4a, 0x2a2a3a);
+      const fSize = Math.max(10, options.floorSize || 50);
+      const divisions = Math.round(fSize / gs);
+      const helper = new THREE.GridHelper(fSize, divisions, 0x3a3a4a, 0x2a2a3a);
       helper.position.y = 0.01;
       scene.add(helper);
       gridHelperRef.current = helper;
     }
-  }, [options.enableGrid, options.gridSize, sceneReady]);
+  }, [options.enableGrid, options.gridSize, options.floorSize, sceneReady]);
 
   // ─── Effect: Mode Switches (Edit Mode Toggle) ──────────────────────────────
   useEffect(() => {
@@ -377,13 +379,14 @@ export const SimplePanel: React.FC<Props> = ({ options, data, width, height, onO
     scene.add(dirLight);
 
     // Floor
-    const floorGeo = new THREE.PlaneGeometry(50, 50);
+    const floorGeo = new THREE.PlaneGeometry(1, 1);
     const floorMat = new THREE.MeshStandardMaterial({ color: 0x222222 });
     floorMatRef.current = floorMat;
     const floor = new THREE.Mesh(floorGeo, floorMat);
     floor.rotation.x = -Math.PI / 2;
     floor.receiveShadow = true;
     scene.add(floor);
+    floorMeshRef.current = floor;
 
     // Tooltip
     const tooltip = document.createElement('div');
@@ -599,6 +602,14 @@ export const SimplePanel: React.FC<Props> = ({ options, data, width, height, onO
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // ─── Effect: Dynamic Floor Size ──────────────────────────────────────────
+  useEffect(() => {
+    if (floorMeshRef.current) {
+      const fSize = Math.max(10, options.floorSize || 50);
+      floorMeshRef.current.scale.set(fSize, fSize, 1);
+    }
+  }, [options.floorSize, sceneReady]);
 
   // ─── Resize ───────────────────────────────────────────────────────────────
   useEffect(() => {

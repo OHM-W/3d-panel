@@ -11,6 +11,13 @@ export const plugin = new PanelPlugin<SimpleOptions>(SimplePanel).setPanelOption
       defaultValue: '',
       category: ['🖼️ Floorplan & Camera'],
     })
+    .addNumberInput({
+      path: 'floorSize',
+      name: 'Floor Size (Area)',
+      description: 'ขนาดพื้นที่ของโรงงาน (Default: 50)',
+      defaultValue: 50,
+      category: ['🖼️ Floorplan & Camera'],
+    })
     .addRadio({
       path: 'cameraPreset',
       name: 'Camera View',
