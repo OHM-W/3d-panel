@@ -1,7 +1,7 @@
 {
   "$schema": "https://raw.githubusercontent.com/grafana/grafana/main/docs/sources/developers/plugins/plugin.schema.json",
   "type": "panel",
-  "name": "IMS 3D Digital Twin",
+  "name": "3D Panel",
   "id": "ims-3d-panel",
   "info": {
     "keywords": [
