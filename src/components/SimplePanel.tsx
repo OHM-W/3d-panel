@@ -1,8 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { PanelProps } from '@grafana/data';
-import { SimpleOptions, MachineLayoutConfig } from 'types';
+import { PanelProps, FieldConfigSource, getActiveThreshold } from '@grafana/data';
+import { SimpleOptions, MachineLayoutConfig } from './types';
 import { css, cx } from '@emotion/css';
-import { useStyles2 } from '@grafana/ui';
+import { useStyles2, useTheme2 } from '@grafana/ui';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
 import { DragControls } from 'three/examples/jsm/controls/DragControls';
@@ -73,24 +73,89 @@ const getStyles = () => ({
     transition: background 0.2s;
     &:hover { background: #ff4d5a; }
   `,
+  hudOverlay: css`
+    position: absolute;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    width: 260px;
+    background: rgba(10, 10, 15, 0.95);
+    backdrop-filter: blur(8px);
+    z-index: 40;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    box-shadow: -4px 0 20px rgba(0,0,0,0.5);
+    color: white;
+    transition: transform 0.3s ease;
+  `,
+  hudCloseBtn: css`
+    position: absolute;
+    top: 15px;
+    right: 15px;
+    background: transparent;
+    border: none;
+    color: #888;
+    cursor: pointer;
+    font-size: 18px;
+    &:hover { color: white; }
+  `,
+  hudTitle: css`
+    font-size: 18px;
+    font-weight: bold;
+    margin-bottom: 16px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid rgba(255,255,255,0.1);
+  `,
+  hudBadge: css`
+    display: inline-block;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: bold;
+    margin-bottom: 20px;
+  `,
+  hudRow: css`
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 12px;
+    font-size: 14px;
+  `,
+  hudLabel: css`
+    color: #999;
+  `,
+  hudValue: css`
+    font-weight: bold;
+  `,
+  hudButton: css`
+    margin-top: auto;
+    background: #0072d3;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    padding: 10px;
+    font-weight: bold;
+    cursor: pointer;
+    text-align: center;
+    &:hover { background: #005fba; }
+  `
 });
 
 // ─── Status helpers ────────────────────────────────────────────────────────────
-function getStatusColor(status: number | undefined, opts: SimpleOptions): string {
+function getStatusColor(status: number | undefined, fieldConfig: FieldConfigSource, theme: any): string {
   if (status === undefined || status === null || isNaN(Number(status))) {
-    return opts.colorOff || '#1a1a2e';
+    return theme.visualization.getColorByName('semi-dark-gray') || '#1a1a2e';
   }
-  if (status === 0) { return opts.colorAlarm      || '#ff2222'; }
-  if (status === 1) { return opts.colorRunning     || '#00cc44'; }
-  if (status === 2) { return opts.colorProduction  || '#ffaa00'; }
-  return opts.colorOff || '#1a1a2e';
+  const steps = fieldConfig?.defaults?.thresholds?.steps ?? [];
+  const threshold = getActiveThreshold(Number(status), steps);
+  return theme.visualization.getColorByName(threshold.color);
 }
 
 function getStatusLabel(status: number | undefined): string {
   if (status === undefined || status === null || isNaN(Number(status))) { return '⚫ Off / No Data'; }
-  if (status === 0) { return '🔴 Alarm'; }
-  if (status === 1) { return '🟢 Running'; }
-  if (status === 2) { return '🟡 In Production'; }
+  if (status === 3) { return '🔴 Alarm'; }
+  if (status === 1) { return '🟡 In Production'; }
+  if (status === 2) { return '🟢 Running'; }
   return '⚫ Off / No Data';
 }
 
@@ -109,8 +174,9 @@ function parseTooltipFields(str: string): Array<{ column: string; label: string;
   }).filter(Boolean) as Array<{ column: string; label: string; unit: string }>;
 }
 
-export const SimplePanel: React.FC<Props> = ({ options, data, width, height, onOptionsChange }) => {
+export const SimplePanel: React.FC<Props> = ({ options, data, width, height, onOptionsChange, fieldConfig }) => {
   const styles = useStyles2(getStyles);
+  const theme = useTheme2();
 
   // ── DOM refs ──────────────────────────────────────────────────────────────
   const mountRef           = useRef<HTMLDivElement>(null);
@@ -123,10 +189,13 @@ export const SimplePanel: React.FC<Props> = ({ options, data, width, height, onO
   const [selectedMachine, setSelectedMachine] = useState<string | null>(null);
   const [showAddPopup, setShowAddPopup] = useState(false);
   const [newMachineName, setNewMachineName] = useState('');
+  const [hudMachine, setHudMachine] = useState<string | null>(null);
+  
+  
 
   // ── Three.js refs ─────────────────────────────────────────────────────────
   const sceneRef       = useRef<THREE.Scene | null>(null);
-  const rendererRef    = useRef<WebGLRenderer | null>(null);
+  const rendererRef    = useRef<THREE.WebGLRenderer | null>(null);
   const cameraRef      = useRef<THREE.PerspectiveCamera | null>(null);
   const orbitRef       = useRef<OrbitControls | null>(null);
   const dControlsRef   = useRef<DragControls | null>(null);
@@ -134,6 +203,9 @@ export const SimplePanel: React.FC<Props> = ({ options, data, width, height, onO
   const floorMatRef    = useRef<THREE.MeshStandardMaterial | null>(null);
   const floorMeshRef   = useRef<THREE.Mesh | null>(null);
   const gridHelperRef  = useRef<THREE.GridHelper | null>(null);
+  const camFocusPosRef = useRef<THREE.Vector3 | null>(null);
+  const camFocusTargetRef = useRef<THREE.Vector3 | null>(null);
+  const alarmLightsRef = useRef<Map<string, THREE.PointLight>>(new Map());
 
   // ── Data refs ─────────────────────────────────────────────────────────────
   const machinesRef    = useRef<Map<string, THREE.Mesh>>(new Map());
@@ -147,12 +219,16 @@ export const SimplePanel: React.FC<Props> = ({ options, data, width, height, onO
   const onOptionsChangeRef = useRef(onOptionsChange);
   const widthRef           = useRef(width);
   const heightRef          = useRef(height);
+  const fieldConfigRef     = useRef(fieldConfig);
+  const themeRef           = useRef(theme);
   
   useEffect(() => {
     optionsRef.current         = options;
     onOptionsChangeRef.current = onOptionsChange;
     widthRef.current           = width;
     heightRef.current          = height;
+    fieldConfigRef.current     = fieldConfig;
+    themeRef.current           = theme;
   });
 
   // ─── Effect: Camera Preset ─────────────────────────────────────────────────
@@ -197,9 +273,10 @@ export const SimplePanel: React.FC<Props> = ({ options, data, width, height, onO
     if (dControlsRef.current) {
       dControlsRef.current.enabled = options.enableEditMode;
     }
-    // Clear selection if we lock
     if (!options.enableEditMode) {
       setSelectedMachine(null);
+    } else {
+      setHudMachine(null); // hide HUD in edit mode
     }
   }, [options.enableEditMode]);
 
@@ -214,8 +291,10 @@ export const SimplePanel: React.FC<Props> = ({ options, data, width, height, onO
     const stringFields = data.series.flatMap(s => s.fields.filter(f => f.type === 'string'));
     const numberFields = data.series.flatMap(s => s.fields.filter(f => f.type === 'number'));
 
-    if (stringFields.length >= 1 && numberFields.length >= 1) {
-      const nameField = stringFields[0];
+    let nameField = stringFields.find(f => f.name === (opts.machineNameField?.trim() || 'machine_name'));
+    if (!nameField && stringFields.length > 0) nameField = stringFields[0];
+
+    if (nameField && numberFields.length >= 1) {
       for (let i = 0; i < nameField.values.length; i++) {
         const mName = String(nameField.values[i]);
         if (!mName) continue;
@@ -239,7 +318,7 @@ export const SimplePanel: React.FC<Props> = ({ options, data, width, height, onO
     sqlColumnsRef.current = freshSQL;
 
     // 2. Auto-Discovery Logic
-    const configs = opts.machineConfigs || {};
+    let configs = opts.machineConfigs || {};
     let newConfigs: Record<string, MachineLayoutConfig> | null = null;
     let autoPlacementCount = Object.keys(configs).length;
 
@@ -260,9 +339,13 @@ export const SimplePanel: React.FC<Props> = ({ options, data, width, height, onO
       }
     }
 
-    if (newConfigs && onOptionsChangeRef.current) {
-      onOptionsChangeRef.current({ ...opts, machineConfigs: newConfigs });
-      return;
+    if (newConfigs) {
+      if (opts.enableEditMode && onOptionsChangeRef.current) {
+        onOptionsChangeRef.current({ ...opts, machineConfigs: newConfigs });
+        return;
+      } else {
+        configs = newConfigs; // render with newConfigs even if not saving
+      }
     }
 
     // 3. Render Meshes
@@ -284,17 +367,16 @@ export const SimplePanel: React.FC<Props> = ({ options, data, width, height, onO
 
         const label = document.createElement('div');
         label.style.cssText = `
-          position: absolute; color: white; background: rgba(0,0,0,0.8);
+          position: absolute; top: 0; left: 0; will-change: transform;
+          color: white; background: rgba(0,0,0,0.8);
           padding: 4px 9px; border-radius: 5px; font-size: 11px;
           font-family: monospace; pointer-events: none;
           border: 1px solid rgba(255,255,255,0.15); white-space: nowrap;
-          transform: translate(-50%, -50%); backdrop-filter: blur(3px);
-          transition: opacity 0.2s;
+          backdrop-filter: blur(3px); transition: opacity 0.2s;
         `;
         labelsContainerRef.current?.appendChild(label);
         labelsRef.current.set(name, label);
       } else {
-        // Sync scaling and rotation from config instantly in case user adjusts via UI Panel
         const mesh = machinesRef.current.get(name)!;
         const cfg = configs[name];
         mesh.scale.set(cfg.scaleX, cfg.scaleY, cfg.scaleZ);
@@ -313,15 +395,22 @@ export const SimplePanel: React.FC<Props> = ({ options, data, width, height, onO
         machinesRef.current.delete(name);
         labelsRef.current.delete(name);
         statusRef.current.delete(name);
+        if (alarmLightsRef.current.has(name)) {
+          scene.remove(alarmLightsRef.current.get(name)!);
+          alarmLightsRef.current.get(name)!.dispose();
+          alarmLightsRef.current.delete(name);
+        }
       }
     }
 
+    const statusFieldName = opts.statusFieldName?.trim() || 'status';
+    
     for (const [name, mesh] of machinesRef.current.entries()) {
       const machineSQL = freshSQL.get(name);
-      const status = machineSQL?.get('value') ?? machineSQL?.get('status');
+      const status = machineSQL?.get(statusFieldName) ?? machineSQL?.get('value');
       statusRef.current.set(name, status);
 
-      const hexColor = getStatusColor(status, opts);
+      const hexColor = getStatusColor(status, fieldConfigRef.current, themeRef.current);
       (mesh.material as THREE.MeshStandardMaterial).color.set(hexColor);
 
       const label = labelsRef.current.get(name);
@@ -331,13 +420,48 @@ export const SimplePanel: React.FC<Props> = ({ options, data, width, height, onO
           <br/><span style="color:${hexColor};font-size:10px">${getStatusLabel(status)}</span>
         `;
       }
+
+      // Alarm Lights
+      if (status === 3 && opts.enableAlarmEffects) {
+        if (!alarmLightsRef.current.has(name)) {
+          const light = new THREE.PointLight(0xff2222, 0, 8);
+          scene.add(light);
+          alarmLightsRef.current.set(name, light);
+        }
+        const aLight = alarmLightsRef.current.get(name)!;
+        aLight.position.copy(mesh.position);
+        aLight.position.y += 3;
+      } else {
+        if (alarmLightsRef.current.has(name)) {
+          const l = alarmLightsRef.current.get(name)!;
+          scene.remove(l);
+          l.dispose();
+          alarmLightsRef.current.delete(name);
+        }
+      }
     }
 
-    // Refresh controls arrays by mutating in place so DragControls reference stays intact
     meshesArrayRef.current.length = 0;
     meshesArrayRef.current.push(...Array.from(machinesRef.current.values()));
 
-  }, [data, sceneReady, options.machineConfigs]);
+  }, [data, sceneReady, options.machineConfigs, options.statusFieldName, options.machineNameField]);
+
+  // ─── Effect: Update Colors on Threshold Change ─────────────────────────────
+  useEffect(() => {
+    if (!sceneReady) return;
+    for (const [name, mesh] of machinesRef.current.entries()) {
+      const status = statusRef.current.get(name);
+      const hexColor = getStatusColor(status, fieldConfig, theme);
+      (mesh.material as THREE.MeshStandardMaterial).color.set(hexColor);
+      const label = labelsRef.current.get(name);
+      if (label) {
+        label.innerHTML = `
+          <b style="color:#eee">${name}</b>
+          <br/><span style="color:${hexColor};font-size:10px">${getStatusLabel(status)}</span>
+        `;
+      }
+    }
+  }, [fieldConfig, theme, sceneReady]);
 
 
   // ─── Effect: Init Scene (runs once) ───────────────────────────────────────
@@ -364,7 +488,7 @@ export const SimplePanel: React.FC<Props> = ({ options, data, width, height, onO
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     mountRef.current.appendChild(renderer.domElement);
-    rendererRef.current = renderer as any;
+    rendererRef.current = renderer;
 
     const orbit = new OrbitControls(camera, renderer.domElement);
     orbit.enableDamping = true;
@@ -414,7 +538,6 @@ export const SimplePanel: React.FC<Props> = ({ options, data, width, height, onO
     dControls.addEventListener('drag', (ev) => {
       const mesh = ev.object;
       mesh.position.y = Math.abs(mesh.scale.y) / 2; // Lock to floor
-      // Grid Snap Logic
       if (optionsRef.current.enableSnap && optionsRef.current.gridSize) {
         const s = optionsRef.current.gridSize;
         mesh.position.x = Math.round(mesh.position.x / s) * s;
@@ -442,7 +565,6 @@ export const SimplePanel: React.FC<Props> = ({ options, data, width, height, onO
     
     dControlsRef.current = dControls;
 
-
     // ─── Raycaster ────────────────────────────────────────────────────────
     const raycaster = new THREE.Raycaster();
     const mouse = new THREE.Vector2();
@@ -453,9 +575,9 @@ export const SimplePanel: React.FC<Props> = ({ options, data, width, height, onO
     };
 
     const onPointerDown = (event: PointerEvent) => {
-      event.stopPropagation(); // Prevents Grafana from dragging the dashboard panel
-      if (event.button !== 0) return; // Only accept left click
-      if (Date.now() - lastDragEnd.current < 150) return; // Ignore click that fires after drag release
+      event.stopPropagation();
+      if (event.button !== 0) return;
+      if (Date.now() - lastDragEnd.current < 150) return;
       
       const opts = optionsRef.current;
       getMouseNDC(event);
@@ -465,14 +587,28 @@ export const SimplePanel: React.FC<Props> = ({ options, data, width, height, onO
 
       if (!opts.enableEditMode) {
         setSelectedMachine(null);
-        const urlTemplate = opts.dashboardUrlTemplate?.trim();
-        if (urlTemplate && hitMesh) {
+        if (hitMesh) {
           const name = hitMesh.userData.name as string;
-          const url = urlTemplate.replace(/\$\{name\}/g, encodeURIComponent(name));
-          window.open(url, '_blank', 'noopener');
+          
+          if (opts.showHUD) {
+            setHudMachine(name);
+          } else {
+            const urlTemplate = opts.dashboardUrlTemplate?.trim();
+            if (urlTemplate) {
+              const url = urlTemplate.replace(/\$\{name\}/g, encodeURIComponent(name));
+              window.open(url, '_blank', 'noopener');
+            }
+          }
+
+          // Smooth Camera Focus
+          const tPos = hitMesh.position.clone();
+          camFocusTargetRef.current = tPos;
+          
+          const camOffset = new THREE.Vector3(0, 10, 15);
+          camOffset.applyAxisAngle(new THREE.Vector3(0,1,0), hitMesh.rotation.y);
+          camFocusPosRef.current = tPos.clone().add(camOffset);
         }
       } else {
-        // We are in Edit Mode
         if (hitMesh) {
           setSelectedMachine(hitMesh.userData.name);
         } else {
@@ -495,7 +631,7 @@ export const SimplePanel: React.FC<Props> = ({ options, data, width, height, onO
         const mesh = hits[0].object as THREE.Mesh;
         const name = mesh.userData.name as string;
         const status = statusRef.current.get(name);
-        const color = getStatusColor(status, optionsRef.current);
+        const color = getStatusColor(status, fieldConfigRef.current, themeRef.current);
         const machineSQL = sqlColumnsRef.current.get(name) || new Map<string, number>();
 
         const extraFields = parseTooltipFields(optionsRef.current.tooltipFields || '');
@@ -551,15 +687,27 @@ export const SimplePanel: React.FC<Props> = ({ options, data, width, height, onO
       const w = widthRef.current;
       const h = heightRef.current;
 
+      // Smooth Camera Focus
+      if (camFocusPosRef.current && camFocusTargetRef.current) {
+        camera.position.lerp(camFocusPosRef.current, 0.07);
+        orbit.target.lerp(camFocusTargetRef.current, 0.07);
+        if (camera.position.distanceTo(camFocusPosRef.current) < 0.15) {
+          camFocusPosRef.current = null;
+          camFocusTargetRef.current = null;
+        }
+      }
+
       for (const [name, mesh] of machinesRef.current.entries()) {
         const status = statusRef.current.get(name);
         const mat = mesh.material as THREE.MeshStandardMaterial;
 
-        // Visual FX for alarm and production
-        if (status === 0) {
+        // Alarm Light logic
+        if (status === 3 && alarmLightsRef.current.has(name)) {
+          const aLight = alarmLightsRef.current.get(name)!;
+          aLight.intensity = Math.abs(Math.sin(time * 4)) * 5;
           mat.emissive.setHex(0xff0000);
           mat.emissiveIntensity = Math.abs(Math.sin(time)) * 0.9;
-        } else if (status === 2) {
+        } else if (status === 1) { // Production
           mat.emissive.setHex(0xff8800);
           mat.emissiveIntensity = Math.abs(Math.sin(time * 0.4)) * 0.2;
         } else {
@@ -567,7 +715,7 @@ export const SimplePanel: React.FC<Props> = ({ options, data, width, height, onO
         }
 
         const label = labelsRef.current.get(name);
-        if (label) {
+        if (label && optionsRef.current.showLabels !== false) {
           tempV.copy(mesh.position);
           tempV.y += Math.abs(mesh.scale.y) / 2 + 0.5; // Always above the box
           tempV.project(camera);
@@ -576,8 +724,7 @@ export const SimplePanel: React.FC<Props> = ({ options, data, width, height, onO
             label.style.opacity = '0';
           } else {
             label.style.opacity = '1';
-            label.style.left = `${(tempV.x * 0.5 + 0.5) * w}px`;
-            label.style.top = `${(tempV.y * -0.5 + 0.5) * h}px`;
+            label.style.transform = `translate3d(${(tempV.x * 0.5 + 0.5) * w}px, ${(tempV.y * -0.5 + 0.5) * h}px, 0) translate(-50%, -50%)`;
           }
         }
       }
@@ -597,7 +744,24 @@ export const SimplePanel: React.FC<Props> = ({ options, data, width, height, onO
       if (tooltip.parentNode) { tooltip.parentNode.removeChild(tooltip); }
       dControls.dispose();
       orbit.dispose();
-      (renderer as THREE.WebGLRenderer).dispose();
+
+      const traverseDispose = (obj: any) => {
+        if (obj.geometry) obj.geometry.dispose();
+        if (obj.material) {
+          if (Array.isArray(obj.material)) obj.material.forEach((m: any) => m.dispose());
+          else obj.material.dispose();
+        }
+        if (obj.children) obj.children.forEach(traverseDispose);
+      };
+      traverseDispose(scene);
+      floorMatRef.current?.map?.dispose();
+
+      for (const light of alarmLightsRef.current.values()) {
+        light.dispose();
+      }
+
+      renderer.forceContextLoss();
+      renderer.dispose();
       scene.clear();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -616,7 +780,7 @@ export const SimplePanel: React.FC<Props> = ({ options, data, width, height, onO
     if (cameraRef.current && rendererRef.current) {
       cameraRef.current.aspect = width / height;
       cameraRef.current.updateProjectionMatrix();
-      (rendererRef.current as THREE.WebGLRenderer).setSize(width, height);
+      rendererRef.current.setSize(width, height);
     }
   }, [width, height]);
 
@@ -626,6 +790,7 @@ export const SimplePanel: React.FC<Props> = ({ options, data, width, height, onO
     const urlToLoad = options.floorplanUrl?.trim() || defaultFloorplanUrl;
     new THREE.TextureLoader().load(urlToLoad, (tex) => {
       tex.colorSpace = THREE.SRGBColorSpace;
+      floorMatRef.current!.map?.dispose();
       floorMatRef.current!.map = tex;
       floorMatRef.current!.color.setHex(0xffffff);
       floorMatRef.current!.needsUpdate = true;
@@ -647,11 +812,10 @@ export const SimplePanel: React.FC<Props> = ({ options, data, width, height, onO
       else if (prop === 'rotationY') currentVal = 0;
     }
     let newValue = (currentVal as number) + delta;
-    if (prop.startsWith('scale') && newValue < 0.1) newValue = 0.1; // Prevent negative/zero scale
+    if (prop.startsWith('scale') && newValue < 0.1) newValue = 0.1;
 
     newConfigs[selectedMachine] = { ...current, [prop]: newValue };
     
-    // Smooth immediate visual update
     const mesh = machinesRef.current.get(selectedMachine);
     if (mesh) {
       if (prop === 'rotationY') {
@@ -731,6 +895,67 @@ export const SimplePanel: React.FC<Props> = ({ options, data, width, height, onO
     );
   }
 
+  // Generate HUD contents if active
+  let hudContent = null;
+  if (hudMachine && sqlColumnsRef.current.has(hudMachine)) {
+    const machineSQL = sqlColumnsRef.current.get(hudMachine)!;
+    const status = statusRef.current.get(hudMachine);
+    const color = getStatusColor(status, fieldConfig, theme);
+    const extraFields = parseTooltipFields(options.tooltipFields || '');
+    
+    // Find numeric columns not already shown
+    const shownCols = new Set(extraFields.map(f => f.column));
+    const extraNumeric: {column: string, val: number}[] = [];
+    machineSQL.forEach((val, col) => {
+      if (!shownCols.has(col) && col !== (options.statusFieldName?.trim() || 'status') && col !== 'value') {
+        extraNumeric.push({column: col, val});
+      }
+    });
+
+    const urlTemplate = options.dashboardUrlTemplate?.trim();
+    let dashboardUrl = '';
+    if (urlTemplate) {
+      dashboardUrl = urlTemplate.replace(/\$\{name\}/g, encodeURIComponent(hudMachine));
+    }
+
+    hudContent = (
+      <div className={styles.hudOverlay} style={{ borderLeft: `4px solid ${color}` }}>
+        <button className={styles.hudCloseBtn} onClick={() => setHudMachine(null)}>×</button>
+        <div className={styles.hudTitle}>{hudMachine}</div>
+        
+        <div className={styles.hudBadge} style={{ backgroundColor: color, color: '#000' }}>
+          {getStatusLabel(status)}
+        </div>
+        
+        {extraFields.map((f, i) => {
+          const val = machineSQL.get(f.column);
+          if (val === undefined) return null;
+          return (
+            <div key={i} className={styles.hudRow}>
+              <span className={styles.hudLabel}>{f.label}</span>
+              <span className={styles.hudValue}>{val}{f.unit ? ' ' + f.unit : ''}</span>
+            </div>
+          );
+        })}
+        
+        {extraNumeric.length > 0 && <div style={{ borderTop: '1px solid rgba(255,255,255,0.1)', margin: '10px 0' }} />}
+        
+        {extraNumeric.map((n, i) => (
+          <div key={`n_${i}`} className={styles.hudRow}>
+            <span className={styles.hudLabel}>{n.column}</span>
+            <span className={styles.hudValue}>{n.val}</span>
+          </div>
+        ))}
+
+        {dashboardUrl && (
+          <button className={styles.hudButton} onClick={() => window.open(dashboardUrl, '_blank', 'noopener')}>
+            เปิด Dashboard
+          </button>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className={cx(styles.wrapper, css`width: ${width}px; height: ${height}px;`)}>
       {/* 3D Canvas */}
@@ -739,8 +964,12 @@ export const SimplePanel: React.FC<Props> = ({ options, data, width, height, onO
       {/* Floating Labels */}
       <div
         ref={labelsContainerRef}
-        style={{ position: 'absolute', top: 0, left: 0, pointerEvents: 'none', width: '100%', height: '100%', zIndex: 5 }}
+        style={{ position: 'absolute', top: 0, left: 0, pointerEvents: 'none', width: '100%', height: '100%', zIndex: 5, display: options.showLabels !== false ? 'block' : 'none' }}
       />
+
+      
+      {/* HUD Drawer */}
+      {hudContent}
 
       {/* 🛠️ Add Machine Button & Popup */}
       {options.enableEditMode && (
@@ -803,7 +1032,7 @@ export const SimplePanel: React.FC<Props> = ({ options, data, width, height, onO
         </div>
       )}
 
-      {/* 🛠️ Smart Control Panel (HTML UI for Scale/Rotate/Delete) */}
+      {/* 🛠️ Smart Control Panel */}
       {options.enableEditMode && selectedMachine && (
         <div 
           onPointerDown={(e) => e.stopPropagation()}
@@ -821,7 +1050,6 @@ export const SimplePanel: React.FC<Props> = ({ options, data, width, height, onO
           </h4>
           
           <div style={{ display: 'grid', gap: '10px' }}>
-            {/* Scale Controls */}
             {[
               { label: 'กว้าง (X)', prop: 'scaleX', delta: 0.5 },
               { label: 'สูง (Y)', prop: 'scaleY', delta: 0.5 },
@@ -839,7 +1067,6 @@ export const SimplePanel: React.FC<Props> = ({ options, data, width, height, onO
               </div>
             ))}
             
-            {/* Rotation Control */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 }}>
               <span style={{ fontSize: 13, color: '#bbb' }}>หมุน (องศา)</span>
               <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
