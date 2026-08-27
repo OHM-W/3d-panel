@@ -12,9 +12,9 @@ export class CameraRig {
   private targetCamPos: THREE.Vector3 | null = null;
   private targetOrbitTarget: THREE.Vector3 | null = null;
 
-  // Walkthrough Controls
+  // Walkthrough & Pan Controls
   private moveState = { forward: false, backward: false, left: false, right: false };
-  private moveSpeed = 12.0;
+  private moveSpeed = 14.0;
   private velocity = new THREE.Vector3();
   private direction = new THREE.Vector3();
   private euler = new THREE.Euler(0, 0, 0, 'YXZ');
@@ -26,8 +26,29 @@ export class CameraRig {
     this.camera = camera;
     this.domElement = domElement;
     this.orbit = new OrbitControls(this.camera, this.domElement);
+
+    // ─── 🚀 Free Camera Configuration (Unconstrained 3D Orbit) ──────────────
     this.orbit.enableDamping = true;
     this.orbit.dampingFactor = 0.08;
+    this.orbit.enablePan = true;
+    this.orbit.screenSpacePanning = true; // Freely pan in screen space (up, down, left, right)
+    this.orbit.panSpeed = 1.4;
+    this.orbit.rotateSpeed = 1.0;
+    this.orbit.zoomSpeed = 1.2;
+    this.orbit.minDistance = 0.5;
+    this.orbit.maxDistance = 1500;
+    this.orbit.maxPolarAngle = Math.PI - 0.05; // Full 180° vertical rotation freedom
+
+    // Mouse & Touch bindings
+    this.orbit.mouseButtons = {
+      LEFT: THREE.MOUSE.ROTATE,
+      MIDDLE: THREE.MOUSE.DOLLY,
+      RIGHT: THREE.MOUSE.PAN,
+    };
+    this.orbit.touches = {
+      ONE: THREE.TOUCH.ROTATE,
+      TWO: THREE.TOUCH.DOLLY_PAN,
+    };
 
     this.onKeyDownBound = this.onKeyDown.bind(this);
     this.onKeyUpBound = this.onKeyUp.bind(this);
@@ -50,6 +71,8 @@ export class CameraRig {
     if (newMode === 'top') {
       this.orbit.enabled = true;
       this.orbit.enableRotate = false;
+      this.orbit.enablePan = true;
+      this.orbit.screenSpacePanning = true;
       this.camera.position.set(0, floorSize * 0.9, 0.001);
       this.camera.lookAt(0, 0, 0);
       this.orbit.target.set(0, 0, 0);
@@ -60,10 +83,12 @@ export class CameraRig {
       this.camera.lookAt(0, 1.8, 0);
       this.euler.setFromQuaternion(this.camera.quaternion);
     } else {
-      // Perspective / Orbit
+      // Free 3D Orbit
       this.orbit.enabled = true;
       this.orbit.enableRotate = true;
-      this.camera.position.set(0, 20, 26);
+      this.orbit.enablePan = true;
+      this.orbit.screenSpacePanning = true;
+      this.camera.position.set(0, 22, 28);
       this.camera.lookAt(0, 0, 0);
       this.orbit.target.set(0, 0, 0);
       this.orbit.update();
@@ -119,9 +144,8 @@ export class CameraRig {
 
       this.camera.translateX(this.velocity.x * delta);
       this.camera.translateZ(this.velocity.z * delta);
-      this.camera.position.y = 1.8; // Maintain walking eye height
+      this.camera.position.y = 1.8;
 
-      // Clamp within factory floor boundaries
       const bound = (floorSize / 2) - 1;
       this.camera.position.x = Math.max(-bound, Math.min(bound, this.camera.position.x));
       this.camera.position.z = Math.max(-bound, Math.min(bound, this.camera.position.z));
