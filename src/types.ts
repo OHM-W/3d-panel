@@ -1,9 +1,4 @@
 ﻿// ─── Machine Status & ISA-101 Standards ─────────────────────────────────────
-// 0 = NO_DATA / OFF (Gray)
-// 1 = IDLE / IN_PRODUCTION (Amber)
-// 2 = RUNNING (Green)
-// 3 = ALARM (Red)
-// 4 = LOTO / MAINTENANCE (Blue/Lock)
 export type MachineStatus = 0 | 1 | 2 | 3 | 4;
 
 export type AlarmSeverity = 'Critical' | 'Major' | 'Minor' | 'None';
@@ -49,9 +44,9 @@ export interface SimpleOptions {
   enableGrid: boolean;
   gridSize: number;
   enableSnap: boolean;
-  boxWidth: number;
-  boxHeight: number;
-  boxDepth: number;
+  boxWidth?: number;
+  boxHeight?: number;
+  boxDepth?: number;
 
   // ─── 📦 Machine Layout Configs ───────────────────────────────────────────
   machineConfigs: Record<string, MachineLayoutConfig>;

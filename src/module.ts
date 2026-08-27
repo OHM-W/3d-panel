@@ -168,23 +168,5 @@ export const plugin = new PanelPlugin<SimpleOptions>(SimplePanel)
         name: 'Snap to Grid',
         defaultValue: false,
         category: ['🛠️ Edit & Layout Mode'],
-      })
-      .addNumberInput({
-        path: 'boxWidth',
-        name: 'Default Width',
-        defaultValue: 2,
-        category: ['🛠️ Edit & Layout Mode'],
-      })
-      .addNumberInput({
-        path: 'boxHeight',
-        name: 'Default Height',
-        defaultValue: 1,
-        category: ['🛠️ Edit & Layout Mode'],
-      })
-      .addNumberInput({
-        path: 'boxDepth',
-        name: 'Default Depth',
-        defaultValue: 2,
-        category: ['🛠️ Edit & Layout Mode'],
       });
   });
