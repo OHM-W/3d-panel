@@ -71,9 +71,9 @@ const getStyles = () => ({
     &:hover { background: #005fba; }
   `,
   deleteBtn: css`
-    width: 100%; margin-top: 16px; background: #e63946; color: white;
-    border: none; border-radius: 8px; padding: 10px;
-    font-size: 14px; font-weight: bold; cursor: pointer; transition: background 0.2s;
+    width: 100%; margin-top: 14px; background: #e63946; color: white;
+    border: none; border-radius: 8px; padding: 9px;
+    font-size: 13px; font-weight: bold; cursor: pointer; transition: background 0.2s;
     &:hover { background: #ff4d5a; }
   `,
 });
@@ -168,6 +168,7 @@ export const SimplePanel: React.FC<Props> = ({ options, data, width, height, onO
   const [webglError, setWebglError] = useState<string | null>(null);
   const [sceneReady, setSceneReady] = useState(false);
   const [selectedMachine, setSelectedMachine] = useState<string | null>(null);
+  const [renameInput, setRenameInput] = useState('');
   const [showAddPopup, setShowAddPopup] = useState(false);
   const [newMachineName, setNewMachineName] = useState('');
   const [hudMachine, setHudMachine] = useState<string | null>(null);
@@ -194,6 +195,12 @@ export const SimplePanel: React.FC<Props> = ({ options, data, width, height, onO
   const sqlColumnsRef = useRef<Map<string, Map<string, number>>>(new Map());
   const labelsRef = useRef<Map<string, HTMLDivElement>>(new Map());
   const lastDragEnd = useRef(0);
+
+  // ─── Selection Helper ─────────────────────────────────────────────────────
+  const selectMachine = (name: string | null) => {
+    setSelectedMachine(name);
+    setRenameInput(name || '');
+  };
 
   // ─── Switch Camera Mode Handler ───────────────────────────────────────────
   const handleSwitchCamMode = (newMode: CameraMode) => {
@@ -251,7 +258,7 @@ export const SimplePanel: React.FC<Props> = ({ options, data, width, height, onO
       dControlsRef.current.enabled = options.enableEditMode;
     }
     if (!options.enableEditMode) {
-      setSelectedMachine(null);
+      selectMachine(null);
     }
   }, [options.enableEditMode]);
 
@@ -448,7 +455,6 @@ export const SimplePanel: React.FC<Props> = ({ options, data, width, height, onO
     }
 
     renderer.setSize(width, height);
-    // ⚡ Performance Fix: Cap pixelRatio to max 1.5 for silky 60 FPS on 4K/low-end screens
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
     renderer.shadowMap.enabled = true;
     mountRef.current.appendChild(renderer.domElement);
@@ -524,7 +530,7 @@ export const SimplePanel: React.FC<Props> = ({ options, data, width, height, onO
     dControls.enabled = false;
     dControls.addEventListener('dragstart', (ev) => {
       cameraRig.orbit.enabled = false;
-      setSelectedMachine(ev.object.userData.name);
+      selectMachine(ev.object.userData.name);
     });
     dControls.addEventListener('drag', (ev) => {
       const mesh = ev.object;
@@ -593,11 +599,11 @@ export const SimplePanel: React.FC<Props> = ({ options, data, width, height, onO
               window.open(url, '_blank', 'noopener');
             }
           } else {
-            setSelectedMachine(name);
+            selectMachine(name);
           }
         } else {
           if (!optionsRef.current.enableEditMode) setHudMachine(null);
-          else setSelectedMachine(null);
+          else selectMachine(null);
         }
       }
     };
@@ -801,6 +807,52 @@ export const SimplePanel: React.FC<Props> = ({ options, data, width, height, onO
     }
   };
 
+  // ─── ✏️ Rename Machine Handler (Instant Re-binding) ───────────────────────
+  const handleRenameMachine = () => {
+    const newName = renameInput.trim();
+    if (!newName || !selectedMachine || newName === selectedMachine) return;
+
+    const opts = optionsRef.current;
+    const oldConfigs = opts.machineConfigs || {};
+    const currentConfig = oldConfigs[selectedMachine] || {
+      x: 0, z: 0, scaleX: opts.boxWidth || 2, scaleY: opts.boxHeight || 1, scaleZ: opts.boxDepth || 2, rotationY: 0
+    };
+
+    // 1. Copy config to newName, delete old key from machineConfigs
+    const newConfigs = { ...oldConfigs };
+    newConfigs[newName] = { ...currentConfig };
+    delete newConfigs[selectedMachine];
+
+    // 2. Update Three.js Mesh and Label refs in-place
+    const mesh = machinesRef.current.get(selectedMachine);
+    if (mesh) {
+      mesh.userData = { name: newName };
+      machinesRef.current.delete(selectedMachine);
+      machinesRef.current.set(newName, mesh);
+    }
+
+    const label = labelsRef.current.get(selectedMachine);
+    if (label) {
+      labelsRef.current.delete(selectedMachine);
+      labelsRef.current.set(newName, label);
+    }
+
+    // 3. Clear old status/severity/loto for old name
+    statusRef.current.delete(selectedMachine);
+    severityRef.current.delete(selectedMachine);
+    lotoRef.current.delete(selectedMachine);
+    alarmRendererRef.current?.removeMachine(selectedMachine);
+
+    // 4. Update selection state
+    setSelectedMachine(newName);
+    setRenameInput(newName);
+
+    // 5. Trigger Grafana options change to persist in Dashboard JSON
+    if (onOptionsChangeRef.current) {
+      onOptionsChangeRef.current({ ...opts, machineConfigs: newConfigs });
+    }
+  };
+
   const handleAddMachine = () => {
     const name = newMachineName.trim();
     if (!name) return;
@@ -813,7 +865,7 @@ export const SimplePanel: React.FC<Props> = ({ options, data, width, height, onO
     }
     setShowAddPopup(false);
     setNewMachineName('');
-    setSelectedMachine(name);
+    selectMachine(name);
     if (onOptionsChangeRef.current) {
       onOptionsChangeRef.current({ ...opts, machineConfigs: newConfigs });
     }
@@ -824,7 +876,7 @@ export const SimplePanel: React.FC<Props> = ({ options, data, width, height, onO
     const opts = optionsRef.current;
     const newConfigs = { ...(opts.machineConfigs || {}) };
     if (newConfigs[selectedMachine]) newConfigs[selectedMachine].hidden = true;
-    setSelectedMachine(null);
+    selectMachine(null);
     if (onOptionsChangeRef.current) {
       onOptionsChangeRef.current({ ...opts, machineConfigs: newConfigs });
     }
@@ -1037,32 +1089,62 @@ export const SimplePanel: React.FC<Props> = ({ options, data, width, height, onO
       {/* ── Edit Control Panel ────────────────────────────────────────────── */}
       {options.enableEditMode && selectedMachine && (
         <div onPointerDown={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}
-          style={{ position: 'absolute', bottom: 20, right: 20, zIndex: 30, background: 'rgba(25,25,35,0.95)', border: '1px solid #444', borderRadius: 12, padding: 16, color: '#fff', boxShadow: '0 8px 32px rgba(0,0,0,0.7)', backdropFilter: 'blur(10px)', width: 260 }}>
-          <h4 style={{ margin: '0 0 16px 0', fontSize: 16, borderBottom: '1px solid #555', paddingBottom: 8, color: '#ffaa00' }}>
+          style={{ position: 'absolute', bottom: 20, right: 20, zIndex: 30, background: 'rgba(25,25,35,0.95)', border: '1px solid #444', borderRadius: 12, padding: 16, color: '#fff', boxShadow: '0 8px 32px rgba(0,0,0,0.7)', backdropFilter: 'blur(10px)', width: 270 }}>
+          <h4 style={{ margin: '0 0 12px 0', fontSize: 15, borderBottom: '1px solid #555', paddingBottom: 8, color: '#ffaa00' }}>
             🛠️ ตั้งค่า: {escapeHTML(selectedMachine)}
           </h4>
-          <div style={{ display: 'grid', gap: 10 }}>
+
+          {/* ✏️ Rename Machine Section */}
+          <div style={{ marginBottom: 14, paddingBottom: 12, borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+            <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 6, fontWeight: 600 }}>✏️ เปลี่ยนชื่อเครื่องจักร:</div>
+            <div style={{ display: 'flex', gap: 6 }}>
+              <input
+                type="text"
+                value={renameInput}
+                onChange={(e) => setRenameInput(e.target.value)}
+                placeholder="ระบุชื่อใหม่ (เช่น LDI-88)"
+                onKeyDown={(e) => e.key === 'Enter' && handleRenameMachine()}
+                style={{
+                  flex: 1, padding: '6px 8px', borderRadius: 4,
+                  border: '1px solid #555', background: '#111', color: '#fff', fontSize: 12
+                }}
+              />
+              <button
+                onClick={handleRenameMachine}
+                style={{
+                  background: '#0284c7', color: '#fff', border: 'none',
+                  borderRadius: 4, padding: '6px 10px', fontSize: 12,
+                  fontWeight: 'bold', cursor: 'pointer'
+                }}
+                title="เปลี่ยนชื่อและผูกข้อมูลกับเครื่องนี้ทันที"
+              >
+                บันทึก
+              </button>
+            </div>
+          </div>
+
+          <div style={{ display: 'grid', gap: 9 }}>
             {[
               { label: 'กว้าง (X)', prop: 'scaleX', delta: 0.5 },
               { label: 'สูง (Y)', prop: 'scaleY', delta: 0.5 },
               { label: 'ลึก (Z)', prop: 'scaleZ', delta: 0.5 },
             ].map(item => (
               <div key={item.prop} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontSize: 13, color: '#bbb' }}>{escapeHTML(item.label)}</span>
+                <span style={{ fontSize: 12, color: '#bbb' }}>{escapeHTML(item.label)}</span>
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                   <button onClick={() => adjustProperty(item.prop as any, -item.delta)} className={styles.iconBtn}>-</button>
-                  <span style={{ display: 'inline-block', width: 35, textAlign: 'center', fontSize: 13, fontWeight: 'bold' }}>
+                  <span style={{ display: 'inline-block', width: 35, textAlign: 'center', fontSize: 12, fontWeight: 'bold' }}>
                     {formatTelemetryValue((options.machineConfigs?.[selectedMachine] as any)?.[item.prop] || 1)}
                   </span>
                   <button onClick={() => adjustProperty(item.prop as any, item.delta)} className={styles.iconBtn}>+</button>
                 </div>
               </div>
             ))}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 }}>
-              <span style={{ fontSize: 13, color: '#bbb' }}>หมุน (องศา)</span>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 2 }}>
+              <span style={{ fontSize: 12, color: '#bbb' }}>หมุน (องศา)</span>
               <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                 <button onClick={() => adjustProperty('rotationY', -Math.PI / 8)} className={styles.iconBtn}>↺</button>
-                <span style={{ display: 'inline-block', width: 35, textAlign: 'center', fontSize: 13, fontWeight: 'bold' }}>
+                <span style={{ display: 'inline-block', width: 35, textAlign: 'center', fontSize: 12, fontWeight: 'bold' }}>
                   {Math.round(((options.machineConfigs?.[selectedMachine]?.rotationY) || 0) * (180 / Math.PI))}°
                 </span>
                 <button onClick={() => adjustProperty('rotationY', Math.PI / 8)} className={styles.iconBtn}>↻</button>
