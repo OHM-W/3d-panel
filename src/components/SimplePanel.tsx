@@ -6,7 +6,6 @@ import { useStyles2, useTheme2 } from '@grafana/ui';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
 import { DragControls } from 'three/examples/jsm/controls/DragControls';
-import defaultFloorplanUrl from '../img/layout.jpg';
 
 interface Props extends PanelProps<SimpleOptions> {}
 
@@ -789,8 +788,14 @@ export const SimplePanel: React.FC<Props> = ({ options, data, width, height, onO
 
   useEffect(() => {
     if (!floorMatRef.current) { return; }
-    const urlToLoad = options.floorplanUrl?.trim() || defaultFloorplanUrl;
-    if (!urlToLoad) { return; }
+    const urlToLoad = options.floorplanUrl?.trim();
+    
+    if (!urlToLoad) {
+      floorMatRef.current.map = null;
+      floorMatRef.current.color.setHex(0x222224);
+      floorMatRef.current.needsUpdate = true;
+      return;
+    }
 
     // Check memory cache for instant swap (0ms)
     if (texCacheRef.current.has(urlToLoad)) {
@@ -801,21 +806,26 @@ export const SimplePanel: React.FC<Props> = ({ options, data, width, height, onO
       return;
     }
 
-    const loader = new THREE.TextureLoader();
-    loader.setCrossOrigin('anonymous');
-    loader.load(
-      urlToLoad,
-      (tex) => {
+    let isMounted = true;
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      if (!isMounted) return;
+      
+      // Async decode image off-main-thread
+      createImageBitmap(img).then(bitmap => {
+        if (!isMounted) return;
+        
+        const tex = new THREE.Texture(bitmap);
         tex.colorSpace = THREE.SRGBColorSpace;
-        // ⚡ Performance Fix: Disable CPU mipmap generation for instant WebGL upload
         tex.generateMipmaps = false;
         tex.minFilter = THREE.LinearFilter;
         tex.magFilter = THREE.LinearFilter;
         if (rendererRef.current) {
           tex.anisotropy = Math.min(4, rendererRef.current.capabilities.getMaxAnisotropy());
         }
+        tex.needsUpdate = true;
 
-        // Cache texture
         texCacheRef.current.set(urlToLoad, tex);
 
         if (floorMatRef.current) {
@@ -823,12 +833,18 @@ export const SimplePanel: React.FC<Props> = ({ options, data, width, height, onO
           floorMatRef.current.color.setHex(0xffffff);
           floorMatRef.current.needsUpdate = true;
         }
-      },
-      undefined,
-      (err) => {
-        console.warn('[IMS 3D Panel] Failed to load floorplan image:', urlToLoad, err);
-      }
-    );
+      }).catch(err => {
+        console.warn('[IMS 3D Panel] Failed to create ImageBitmap:', err);
+      });
+    };
+    img.onerror = (err) => {
+      console.warn('[IMS 3D Panel] Failed to load floorplan image:', urlToLoad, err);
+    };
+    img.src = urlToLoad;
+
+    return () => {
+      isMounted = false;
+    };
   }, [options.floorplanUrl]);
 
   // ─── Property Adjuster (HTML UI) ──────────────────────────────────────────
