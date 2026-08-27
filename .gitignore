@@ -46,3 +46,12 @@ ci/
 .idea
 
 .eslintcache
+
+# Floorplan Images & Confidential Assets
+src/img/Floor*.jpg
+src/img/Floor*.png
+src/img/images.*
+*.jpg
+*.png
+*.webp
+!src/img/logo.svg
