@@ -13,6 +13,7 @@ export const plugin = new PanelPlugin<SimpleOptions>(SimplePanel)
         mode: ThresholdsMode.Absolute,
         steps: [
           { color: 'semi-dark-gray', value: null as unknown as number },
+          { color: 'semi-dark-green', value: 0 },
           { color: 'semi-dark-yellow', value: 1 },
           { color: 'semi-dark-green', value: 2 },
           { color: 'dark-red', value: 3 },
