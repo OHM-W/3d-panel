@@ -1,4 +1,4 @@
-import { FieldConfigProperty, PanelPlugin, ThresholdsMode } from '@grafana/data';
+﻿import { FieldConfigProperty, PanelPlugin, ThresholdsMode } from '@grafana/data';
 import { SimpleOptions } from './types';
 import { SimplePanel } from './components/SimplePanel';
 
@@ -13,132 +13,141 @@ export const plugin = new PanelPlugin<SimpleOptions>(SimplePanel)
         mode: ThresholdsMode.Absolute,
         steps: [
           { color: 'semi-dark-gray', value: null as unknown as number },
-          { color: 'semi-dark-blue', value: 0 },
           { color: 'semi-dark-yellow', value: 1 },
           { color: 'semi-dark-green', value: 2 },
           { color: 'dark-red', value: 3 },
+          { color: 'semi-dark-blue', value: 4 }, // LOTO / Maintenance
         ],
       },
     },
   })
   .setPanelOptions((builder) => {
     return builder
-      // ─── 🏷️ 1. Labels & Tooltips ──────────────────────────────────────────
+      // ─── 🏷️ 1. Labels, ISA-101 Alarms & LOTO ──────────────────────────────
       .addBooleanSwitch({
         path: 'showLabels',
         name: '🏷️ Show Floating Labels',
-        description: 'เปิด/ปิด ป้ายชื่อและสถานะลอยเหนือกล่อง 3D (ปิดเพื่อไม่ให้บังแปลนโรงงาน)',
+        description: 'เปิด/ปิด ป้ายชื่อและสถานะลอยเหนือกล่อง 3D',
         defaultValue: true,
-        category: ['🏷️ Labels & Tooltips'],
+        category: ['🏷️ Labels, ISA-101 & LOTO'],
+      })
+      .addBooleanSwitch({
+        path: 'enableISA101Alarms',
+        name: '🚨 Show ISA-101 Alarm Badges',
+        description: 'แสดงป้ายเตือนภัยสามเหลี่ยม Critical / Major ตามมาตรฐาน ISA-101',
+        defaultValue: true,
+        category: ['🏷️ Labels, ISA-101 & LOTO'],
+      })
+      .addBooleanSwitch({
+        path: 'enableLOTO',
+        name: '🔒 Show LOTO Maintenance Badges',
+        description: 'แสดงป้ายแม่กุญแจและกรอบนิรภัย Lockout / Tagout เมื่อเครื่องซ่อมบำรุง',
+        defaultValue: true,
+        category: ['🏷️ Labels, ISA-101 & LOTO'],
       })
       .addBooleanSwitch({
         path: 'enableTooltip',
         name: 'Enable Hover Tooltip',
-        description: 'แสดงกล่องรายละเอียดเมื่อเลื่อนเมาส์ไปชี้ที่เครื่องจักร',
+        description: 'แสดงกล่องรายละเอียดเมื่อเลื่อนเมาส์ชี้ตัวเครื่องจักร',
         defaultValue: true,
-        category: ['🏷️ Labels & Tooltips'],
-      })
-      .addTextInput({
-        path: 'tooltipFields',
-        name: 'Tooltip Fields Mapping',
-        description: 'เช่น temperature=Temp:°C, humidity=Humidity:%',
-        defaultValue: '',
-        category: ['🏷️ Labels & Tooltips'],
+        category: ['🏷️ Labels, ISA-101 & LOTO'],
       })
       .addBooleanSwitch({
         path: 'showHUD',
         name: 'Show Machine HUD Drawer',
         description: 'เปิดแผงข้อมูลด่วนรายเครื่องเมื่อคลิกที่ตัวเครื่องจักร',
         defaultValue: true,
-        category: ['🏷️ Labels & Tooltips'],
+        category: ['🏷️ Labels, ISA-101 & LOTO'],
+      })
+      .addTextInput({
+        path: 'tooltipFields',
+        name: 'Tooltip Fields Mapping',
+        description: 'เช่น temperature=Temp:°C, humidity=Humidity:%',
+        defaultValue: '',
+        category: ['🏷️ Labels, ISA-101 & LOTO'],
       })
       .addTextInput({
         path: 'dashboardUrlTemplate',
         name: 'Drilldown Dashboard URL',
-        description: 'ลิงก์เจาะลึกตอนคลิก (เช่น /d/single-machine?var-machine=${name})',
+        description: 'ลิงก์ตอนคลิก (ใช้ ${name} แทนชื่อเครื่อง)',
         defaultValue: '',
-        category: ['🏷️ Labels & Tooltips'],
+        category: ['🏷️ Labels, ISA-101 & LOTO'],
       })
 
-      // ─── 🌡️ 2. Spatial Floor Heatmap (Industry 4.0) ──────────────────────
-      .addBooleanSwitch({
-        path: 'enableHeatmap',
-        name: 'Enable Floor Heatmap',
-        description: 'เปิดแผนที่ความร้อน/ความชื้น 3D ไล่เฉดสีบนพื้นโรงงาน (GLSL Shader)',
-        defaultValue: false,
-        category: ['🌡️ Spatial Floor Heatmap'],
-      })
-      .addTextInput({
-        path: 'heatmapMetric',
-        name: 'Heatmap Metric Column',
-        description: 'ชื่อ Column ใน SQL ที่ใช้คำนวณ Heatmap (เช่น temperature, humidity)',
-        defaultValue: 'temperature',
-        category: ['🌡️ Spatial Floor Heatmap'],
-      })
-      .addNumberInput({
-        path: 'heatmapMin',
-        name: 'Min Value (Blue/Cool)',
-        description: 'ค่าต่ำสุดสำหรับเฉดสีน้ำเงิน/เขียว (default: 20)',
-        defaultValue: 20,
-        category: ['🌡️ Spatial Floor Heatmap'],
-      })
-      .addNumberInput({
-        path: 'heatmapMax',
-        name: 'Max Value (Red/Hot)',
-        description: 'ค่าสูงสุดสำหรับเฉดสีแดง/ร้อน (default: 30)',
-        defaultValue: 30,
-        category: ['🌡️ Spatial Floor Heatmap'],
-      })
-      .addNumberInput({
-        path: 'heatmapRadius',
-        name: 'Heat Dispersion Radius',
-        description: 'รัศมีการกระจายตัวของความร้อนในพื้นที่ 3D (default: 10)',
-        defaultValue: 10,
-        category: ['🌡️ Spatial Floor Heatmap'],
-      })
-
-      // ─── 🤖 3. 3D Machine Models (GLTF / GLB) ──────────────────────────────
-      .addTextInput({
-        path: 'defaultModelUrl',
-        name: 'Default 3D Model URL (.glb / .gltf)',
-        description: 'URL ของไฟล์ 3D Model เครื่องจักรมาตรฐาน (ถ้าปล่อยว่างจะใช้กล่อง Cube อัตโนมัติ)',
-        defaultValue: '',
-        category: ['🤖 3D Machine Models'],
-      })
-
-      // ─── 🏢 4. Floorplan & Camera ──────────────────────────────────────────
-      .addTextInput({
-        path: 'floorplanUrl',
-        name: 'Floorplan Image URL',
-        description: 'URL รูปแปลนโรงงาน (ปล่อยว่างเพื่อใช้รูปมาตรฐาน)',
-        defaultValue: '',
-        category: ['🏢 Floorplan & Camera'],
-      })
-      .addNumberInput({
-        path: 'floorSize',
-        name: 'Floor Size (Width/Length)',
-        description: 'ขนาดพื้นที่โรงงาน (default: 50)',
-        defaultValue: 50,
-        category: ['🏢 Floorplan & Camera'],
-      })
+      // ─── 🎮 2. Camera & Navigation ─────────────────────────────────────────
       .addRadio({
         path: 'cameraPreset',
-        name: 'Default Camera Angle',
+        name: '🎮 Camera Navigation Mode',
+        description: 'เลือกโหมดมุมกล้อง: 3D Orbit, 2D Top-Down หรือ เดินสำรวจด้วย WASD',
         defaultValue: 'perspective',
         settings: {
           options: [
-            { value: 'perspective', label: '3D Isometric View' },
-            { value: 'top', label: 'Top-Down 2D Plan' },
+            { value: 'perspective', label: '🌐 3D Orbit View' },
+            { value: 'top', label: '📐 2D Top-Down View' },
+            { value: 'walkthrough', label: '🚶‍♂️ WASD Walkthrough' },
           ],
         },
-        category: ['🏢 Floorplan & Camera'],
+        category: ['🎮 Camera & Navigation'],
+      })
+
+      // ─── 🏢 3. Floorplan Plan ──────────────────────────────────────────────
+      .addTextInput({
+        path: 'floorplanUrl',
+        name: 'Floorplan Image URL',
+        description: 'URL รูปแปลนโรงงาน (ถ้าปล่อยว่างจะเป็นพื้นสีทึบเรียบๆ)',
+        defaultValue: '',
+        category: ['🏢 Floorplan Plan'],
+      })
+      .addNumberInput({
+        path: 'floorSize',
+        name: 'Floor Size',
+        description: 'ขนาดพื้นที่โรงงาน (default: 50)',
+        defaultValue: 50,
+        category: ['🏢 Floorplan Plan'],
+      })
+
+      // ─── ⚡ 4. Real-time & Data Binding ────────────────────────────────────
+      .addTextInput({
+        path: 'machineNameField',
+        name: 'Machine Name Column',
+        description: 'ชื่อ Column ใน SQL ของชื่อเครื่องจักร (default: machine_name)',
+        defaultValue: 'machine_name',
+        category: ['⚡ Real-time & Data Binding'],
+      })
+      .addTextInput({
+        path: 'statusFieldName',
+        name: 'Status Column',
+        description: 'ชื่อ Column ใน SQL ของสถานะ (default: status)',
+        defaultValue: 'status',
+        category: ['⚡ Real-time & Data Binding'],
+      })
+      .addTextInput({
+        path: 'severityFieldName',
+        name: 'Severity Column',
+        description: 'ชื่อ Column ใน SQL ของความรุนแรง Alarm (default: severity)',
+        defaultValue: 'severity',
+        category: ['⚡ Real-time & Data Binding'],
+      })
+      .addTextInput({
+        path: 'lotoFieldName',
+        name: 'LOTO Column',
+        description: 'ชื่อ Column ใน SQL ของสถานะ LOTO/ซ่อมบำรุง (default: is_loto)',
+        defaultValue: 'is_loto',
+        category: ['⚡ Real-time & Data Binding'],
+      })
+      .addBooleanSwitch({
+        path: 'enableLiveStreaming',
+        name: '⚡ Enable Live Stream',
+        description: 'เปิดรับข้อมูล Real-time Sub-second Streaming',
+        defaultValue: true,
+        category: ['⚡ Real-time & Data Binding'],
       })
 
       // ─── 🛠️ 5. Edit & Layout Mode ──────────────────────────────────────────
       .addBooleanSwitch({
         path: 'enableEditMode',
         name: 'Enable Edit Mode',
-        description: 'เปิดโหมดจัดวาง: จับลากย้ายกล่อง ปรับขนาด และหมุนองศา',
+        description: 'เปิดโหมดจัดวาง: จับลากย้ายกล่อง ปรับขนาด และหมุน',
         defaultValue: false,
         category: ['🛠️ Edit & Layout Mode'],
       })
@@ -162,45 +171,20 @@ export const plugin = new PanelPlugin<SimpleOptions>(SimplePanel)
       })
       .addNumberInput({
         path: 'boxWidth',
-        name: 'Default Machine Width',
+        name: 'Default Width',
         defaultValue: 2,
         category: ['🛠️ Edit & Layout Mode'],
       })
       .addNumberInput({
         path: 'boxHeight',
-        name: 'Default Machine Height',
+        name: 'Default Height',
         defaultValue: 1,
         category: ['🛠️ Edit & Layout Mode'],
       })
       .addNumberInput({
         path: 'boxDepth',
-        name: 'Default Machine Depth',
+        name: 'Default Depth',
         defaultValue: 2,
         category: ['🛠️ Edit & Layout Mode'],
-      })
-
-      // ─── 📊 6. Data Binding ───────────────────────────────────────────────
-      .addTextInput({
-        path: 'machineNameField',
-        name: 'Machine Name Column',
-        description: 'ชื่อ Column ใน SQL ที่เป็นชื่อเครื่องจักร (default: machine_name)',
-        defaultValue: 'machine_name',
-        category: ['📊 Data Binding'],
-      })
-      .addTextInput({
-        path: 'statusFieldName',
-        name: 'Status Column',
-        description: 'ชื่อ Column ใน SQL ที่เป็นค่าสถานะ (default: status)',
-        defaultValue: 'status',
-        category: ['📊 Data Binding'],
-      })
-
-      // ─── 🚨 7. Visual Effects & Alarms ────────────────────────────────────
-      .addBooleanSwitch({
-        path: 'enableAlarmEffects',
-        name: 'Alarm Strobe Beacon',
-        description: 'เปิดไฟไซเรนสีแดง 360° กระพริบเตือนรอบเครื่องเมื่อเกิด Alarm (status=3)',
-        defaultValue: true,
-        category: ['🚨 Visual Effects & Alarms'],
       });
   });

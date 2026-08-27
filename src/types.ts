@@ -1,9 +1,14 @@
-// --- Machine Status -------------------------------------------------------
-// 0 = NO_DATA (Gray)  -- ไม่มีข้อมูล / เครื่องดับ
-// 1 = IDLE    (Amber) -- เครื่องพร้อมแต่ไม่ได้ผลิต
-// 2 = RUNNING (Green) -- กำลังผลิต
-// 3 = ALARM   (Red)   -- มี Alarm วิกฤต
-export type MachineStatus = 0 | 1 | 2 | 3;
+﻿// ─── Machine Status & ISA-101 Standards ─────────────────────────────────────
+// 0 = NO_DATA / OFF (Gray)
+// 1 = IDLE / IN_PRODUCTION (Amber)
+// 2 = RUNNING (Green)
+// 3 = ALARM (Red)
+// 4 = LOTO / MAINTENANCE (Blue/Lock)
+export type MachineStatus = 0 | 1 | 2 | 3 | 4;
+
+export type AlarmSeverity = 'Critical' | 'Major' | 'Minor' | 'None';
+
+export type CameraMode = 'perspective' | 'top' | 'walkthrough';
 
 export interface MachineLayoutConfig {
   x: number;
@@ -13,33 +18,33 @@ export interface MachineLayoutConfig {
   scaleZ: number;
   rotationY: number;
   hidden?: boolean;
-  modelUrl?: string; // Custom GLTF/GLB 3D model for this specific machine
 }
 
 export interface SimpleOptions {
-  // ─── 🏷️ Labels & Tooltips ───────────────────────────────────────────────
-  showLabels?: boolean;
-  enableTooltip: boolean;
-  tooltipFields: string;
-  showHUD: boolean;
-  dashboardUrlTemplate: string;
+  // ─── 🏷️ 1. Labels, ISA-101 Alarms & LOTO ─────────────────────────────────
+  showLabels: boolean;             // เปิด/ปิด ป้ายชื่อลอยเหนือเครื่อง
+  enableISA101Alarms: boolean;     // แสดงป้ายเตือนภัย ISA-101 (Critical/Major/Minor)
+  enableLOTO: boolean;             // แสดงป้ายแม่กุญแจ Lockout/Tagout ตอนซ่อมบำรุง
+  enableTooltip: boolean;          // แสดง Tooltip ตอน Hover เมาส์
+  showHUD: boolean;                // เปิด Machine HUD Drawer ตอนคลิกเครื่อง
+  tooltipFields: string;           // e.g. temperature=Temp:°C, humidity=Humidity:%
+  dashboardUrlTemplate: string;    // ลิงก์เจาะลึกตอนคลิก
 
-  // ─── 🏢 Floorplan & Camera ──────────────────────────────────────────────
-  floorplanUrl: string;
-  floorSize: number;
-  cameraPreset: 'perspective' | 'top';
+  // ─── 🎮 2. Camera & Navigation ───────────────────────────────────────────
+  cameraPreset: CameraMode;        // 'perspective' | 'top' | 'walkthrough'
 
-  // ─── 🌡️ Spatial Floor Heatmap (Industry 4.0) ────────────────────────────
-  enableHeatmap: boolean;
-  heatmapMetric: string; // e.g. 'temperature' or 'humidity'
-  heatmapMin: number;    // e.g. 20
-  heatmapMax: number;    // e.g. 30
-  heatmapRadius: number; // Influence radius (default: 10)
+  // ─── 🏢 3. Floorplan Plan ────────────────────────────────────────────────
+  floorplanUrl: string;            // URL รูปแปลนโรงงาน (ว่าง = พื้นสีทึบ)
+  floorSize: number;               // ขนาดพื้นที่โรงงาน (default: 50)
 
-  // ─── 🤖 3D Models ────────────────────────────────────────────────────────
-  defaultModelUrl: string; // Default .glb / .gltf model URL
+  // ─── ⚡ 4. Real-time & Data Binding ──────────────────────────────────────
+  machineNameField: string;        // column ชื่อเครื่อง (default: machine_name)
+  statusFieldName: string;         // column สถานะ      (default: status)
+  severityFieldName: string;       // column ระดับ Alarm (default: severity)
+  lotoFieldName: string;           // column สถานะ LOTO  (default: is_loto)
+  enableLiveStreaming: boolean;    // สตรีมข้อมูล Real-time ผ่าน WebSocket
 
-  // ─── 🛠️ Edit Mode ────────────────────────────────────────────────────────
+  // ─── 🛠️ 5. Edit & Layout Mode ────────────────────────────────────────────
   enableEditMode: boolean;
   enableGrid: boolean;
   gridSize: number;
@@ -47,13 +52,6 @@ export interface SimpleOptions {
   boxWidth: number;
   boxHeight: number;
   boxDepth: number;
-
-  // ─── 📊 Data Binding ─────────────────────────────────────────────────────
-  machineNameField: string;
-  statusFieldName: string;
-
-  // ─── 🚨 Visual Effects ───────────────────────────────────────────────────
-  enableAlarmEffects: boolean;
 
   // ─── 📦 Machine Layout Configs ───────────────────────────────────────────
   machineConfigs: Record<string, MachineLayoutConfig>;
