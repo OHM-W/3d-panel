@@ -9,6 +9,13 @@ import { CameraRig } from '../engine/CameraRig';
 import { AlarmRenderer } from '../engine/AlarmRenderer';
 import { TextureManager } from '../engine/TextureManager';
 
+// Modular Child Components
+import { CameraToolbar } from './CameraToolbar';
+import { WalkthroughHelp } from './WalkthroughHelp';
+import { MachineHUDDrawer } from './MachineHUDDrawer';
+import { EditControlPanel } from './EditControlPanel';
+import { AddMachineModal } from './AddMachineModal';
+
 interface Props extends PanelProps<SimpleOptions> {}
 
 const getStyles = () => ({
@@ -25,60 +32,9 @@ const getStyles = () => ({
     font-size: 12px; font-weight: 800; letter-spacing: 0.5px;
     box-shadow: 0 4px 12px rgba(0,0,0,0.5); pointer-events: none;
   `,
-  walkthroughBadge: css`
-    position: absolute; bottom: 20px; left: 20px; z-index: 25;
-    background: rgba(15, 23, 42, 0.92); color: #38bdf8;
-    border: 1px solid rgba(56, 189, 248, 0.5);
-    padding: 10px 18px; border-radius: 10px;
-    font-size: 13px; font-weight: 600;
-    box-shadow: 0 8px 24px rgba(0,0,0,0.7);
-    backdrop-filter: blur(10px); pointer-events: none;
-    display: flex; align-items: center; gap: 8px;
-  `,
-  cameraToolbar: css`
-    position: absolute; top: 15px; left: 15px; z-index: 30;
-    display: flex; gap: 4px;
-    background: rgba(15, 23, 42, 0.9);
-    border: 1px solid rgba(255, 255, 255, 0.15);
-    padding: 4px; border-radius: 8px;
-    backdrop-filter: blur(10px);
-    box-shadow: 0 6px 20px rgba(0,0,0,0.6);
-  `,
-  camBtn: css`
-    background: transparent; color: #94a3b8;
-    border: none; border-radius: 6px;
-    padding: 6px 12px; font-size: 12px; font-weight: 700;
-    cursor: pointer; transition: all 0.2s;
-    display: flex; align-items: center; gap: 6px;
-    &:hover { background: rgba(255,255,255,0.1); color: #fff; }
-  `,
-  camBtnActive: css`
-    background: #0284c7 !important; color: #fff !important;
-    box-shadow: 0 2px 8px rgba(2, 132, 199, 0.5);
-  `,
-  iconBtn: css`
-    background: #333; border: 1px solid #555; color: white;
-    border-radius: 4px; width: 28px; height: 28px;
-    cursor: pointer; font-weight: bold;
-    display: flex; align-items: center; justify-content: center;
-    &:hover { background: #444; } &:active { background: #222; }
-  `,
-  addBtn: css`
-    background: #0072d3; color: white; border: none;
-    border-radius: 8px; padding: 8px 16px;
-    font-size: 13px; font-weight: bold; cursor: pointer;
-    box-shadow: 0 4px 10px rgba(0,0,0,0.5); transition: background 0.2s;
-    &:hover { background: #005fba; }
-  `,
-  deleteBtn: css`
-    width: 100%; margin-top: 14px; background: #e63946; color: white;
-    border: none; border-radius: 8px; padding: 9px;
-    font-size: 13px; font-weight: bold; cursor: pointer; transition: background 0.2s;
-    &:hover { background: #ff4d5a; }
-  `,
 });
 
-// ─── 🛡️ Security: High-Performance HTML Sanitizer (XSS Prevention) ───────────
+// ─── 🛡️ Security: HTML Sanitizer (XSS Prevention) ───────────────────────────
 function escapeHTML(str: string | number | null | undefined): string {
   if (str === null || str === undefined) return '';
   const s = String(str);
@@ -90,7 +46,6 @@ function escapeHTML(str: string | number | null | undefined): string {
     .replace(/'/g, '&#039;');
 }
 
-// ─── 📊 Formatting: Telemetry & Number Formatting ───────────────────────────
 function formatTelemetryValue(val: any): string {
   if (typeof val === 'number') {
     if (isNaN(val)) return '—';
@@ -101,7 +56,6 @@ function formatTelemetryValue(val: any): string {
   return escapeHTML(val ?? '—');
 }
 
-// ─── Status & ISA-101 Helpers ───────────────────────────────────────────────
 function getStatusColor(status: number | undefined, fieldConfig: FieldConfigSource, theme: any): string {
   if (status === undefined || status === null || isNaN(Number(status))) {
     return theme.visualization.getColorByName('semi-dark-gray') || '#64748B';
@@ -882,7 +836,7 @@ export const SimplePanel: React.FC<Props> = ({ options, data, width, height, onO
     }
   };
 
-  const hudData = hudMachine ? sqlColumnsRef.current.get(hudMachine) : null;
+  const hudData = hudMachine ? sqlColumnsRef.current.get(hudMachine) : undefined;
   const hudStatus = hudMachine ? statusRef.current.get(hudMachine) : undefined;
   const hudSeverity = hudMachine ? severityRef.current.get(hudMachine) ?? 'None' : 'None';
   const hudLOTO = hudMachine ? lotoRef.current.get(hudMachine) ?? false : false;
@@ -905,48 +859,17 @@ export const SimplePanel: React.FC<Props> = ({ options, data, width, height, onO
       {/* 3D Canvas */}
       <div ref={mountRef} />
 
-      {/* ── Floating On-Screen Camera Toolbar ──────────────────────────────── */}
+      {/* ── 1. Floating On-Screen Camera Toolbar ─────────────────────────── */}
       {!options.enableEditMode && (
-        <div className={styles.cameraToolbar}>
-          <button
-            onClick={() => handleSwitchCamMode('perspective')}
-            className={cx(styles.camBtn, camMode === 'perspective' && styles.camBtnActive)}
-            title="มุมมอง 3D หมุน แพน ซูม ได้อิสระ"
-          >
-            🌐 3D Orbit
-          </button>
-          <button
-            onClick={() => handleSwitchCamMode('top')}
-            className={cx(styles.camBtn, camMode === 'top' && styles.camBtnActive)}
-            title="มุมมองด้านบน 2D Top-Down แบบแปลนผังโรงงาน"
-          >
-            📐 2D Plan
-          </button>
-          <button
-            onClick={() => handleSwitchCamMode('walkthrough')}
-            className={cx(styles.camBtn, camMode === 'walkthrough' && styles.camBtnActive)}
-            title="โหมดเดินสำรวจโรงงานเสมือนจริงด้วยปุ่ม W, A, S, D"
-          >
-            🚶‍♂️ Walk (WASD)
-          </button>
-          <button
-            onClick={handleResetCamera}
-            className={styles.camBtn}
-            title="รีเซ็ตมุมกล้องกลับจุดเริ่มต้น"
-            style={{ borderLeft: '1px solid rgba(255,255,255,0.15)', paddingLeft: 8 }}
-          >
-            🎯 Reset
-          </button>
-        </div>
+        <CameraToolbar
+          currentMode={camMode}
+          onSwitchMode={handleSwitchCamMode}
+          onReset={handleResetCamera}
+        />
       )}
 
-      {/* ── Walkthrough Mode Key Help ──────────────────────────────────────── */}
-      {camMode === 'walkthrough' && !options.enableEditMode && (
-        <div className={styles.walkthroughBadge}>
-          <span style={{ fontSize: 16 }}>🚶‍♂️</span>
-          <span><b>โหมดเดินสำรวจ:</b> กด <b>W, A, S, D</b> เพื่อเดิน | คลิกซ้ายค้างแล้วเลื่อนเมาส์เพื่อหันมุมมอง</span>
-        </div>
-      )}
+      {/* ── 2. Walkthrough Mode Key Help ─────────────────────────────────── */}
+      <WalkthroughHelp visible={camMode === 'walkthrough' && !options.enableEditMode} />
 
       {/* Floating Labels */}
       <div
@@ -958,201 +881,49 @@ export const SimplePanel: React.FC<Props> = ({ options, data, width, height, onO
         }}
       />
 
-      {/* ── Machine HUD Drawer ────────────────────────────────────────────── */}
-      {hudMachine && !options.enableEditMode && (
-        <div
-          onPointerDown={(e) => e.stopPropagation()}
-          onMouseDown={(e) => e.stopPropagation()}
-          onClick={(e) => e.stopPropagation()}
-          style={{
-            position: 'absolute', top: 0, right: 0, bottom: 0,
-            width: 270, zIndex: 50,
-            background: 'rgba(12, 16, 26, 0.97)',
-            borderLeft: `2px solid ${hudColor}`,
-            boxShadow: `-6px 0 32px rgba(0,0,0,0.75)`,
-            backdropFilter: 'blur(12px)',
-            display: 'flex', flexDirection: 'column',
-            padding: 18, gap: 12,
-          }}
-        >
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-            <div>
-              <div style={{ fontSize: 11, color: '#64748b', fontWeight: 600, letterSpacing: 0.5 }}>MACHINE DETAIL</div>
-              <div style={{ fontSize: 18, fontWeight: 800, color: '#fff', marginTop: 2 }}>{escapeHTML(hudMachine)}</div>
-            </div>
-            <button
-              onClick={() => setHudMachine(null)}
-              style={{ background: 'transparent', border: 'none', color: '#94a3b8', fontSize: 18, cursor: 'pointer', padding: 0, lineHeight: 1 }}
-            >✕</button>
-          </div>
-
-          <div style={{ background: `${hudColor}1a`, border: `1px solid ${hudColor}88`, borderRadius: 8, padding: '10px 12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <div style={{ width: 10, height: 10, borderRadius: '50%', background: hudColor, boxShadow: `0 0 8px ${hudColor}` }} />
-              <span style={{ color: hudColor, fontWeight: 700, fontSize: 13 }}>{escapeHTML(getStatusLabel(hudStatus))}</span>
-            </div>
-            {hudLOTO && <span style={{ background: '#0284c7', color: '#fff', padding: '2px 6px', borderRadius: 4, fontSize: 10, fontWeight: 'bold' }}>🔒 LOTO</span>}
-            {!hudLOTO && hudSeverity === 'Critical' && <span style={{ background: '#dc2626', color: '#fff', padding: '2px 6px', borderRadius: 4, fontSize: 10, fontWeight: 'bold' }}>▲ CRIT</span>}
-            {!hudLOTO && hudSeverity === 'Major' && <span style={{ background: '#d97706', color: '#fff', padding: '2px 6px', borderRadius: 4, fontSize: 10, fontWeight: 'bold' }}>◆ MAJOR</span>}
-          </div>
-
-          <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)' }} />
-
-          {tooltipFieldsParsed.length > 0 && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {tooltipFieldsParsed.map(f => {
-                const val = hudData?.get(f.column);
-                if (val === undefined) return null;
-                return (
-                  <div key={f.column} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ color: '#94a3b8', fontSize: 12 }}>{escapeHTML(f.label)}</span>
-                    <span style={{ color: '#fff', fontWeight: 600, fontSize: 13 }}>{formatTelemetryValue(val)}{f.unit ? ` ${escapeHTML(f.unit)}` : ''}</span>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-
-          {hudData && (() => {
-            const declaredCols = new Set(tooltipFieldsParsed.map(f => f.column));
-            const statusCol = options.statusFieldName?.trim() || 'status';
-            const extra: React.ReactNode[] = [];
-            for (const [col, val] of hudData.entries()) {
-              if (declaredCols.has(col) || col === statusCol || col === 'value') continue;
-              extra.push(
-                <div key={col} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ color: '#64748b', fontSize: 11 }}>{escapeHTML(col)}</span>
-                  <span style={{ color: '#cbd5e1', fontWeight: 500, fontSize: 12 }}>{formatTelemetryValue(val)}</span>
-                </div>
-              );
-            }
-            return extra.length > 0 ? (
-              <>
-                <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: 8, fontSize: 10, color: '#64748b', fontWeight: 600 }}>ข้อมูล Telemetry เพิ่มเติม</div>
-                {extra}
-              </>
-            ) : null;
-          })()}
-
-          <div style={{ flex: 1 }} />
-
-          {options.dashboardUrlTemplate?.trim() && (
-            <button
-              onClick={() => {
-                const url = options.dashboardUrlTemplate.replace(/\${name}/g, encodeURIComponent(hudMachine));
-                window.open(url, '_blank', 'noopener');
-              }}
-              style={{
-                background: hudColor, color: '#000', border: 'none',
-                borderRadius: 8, padding: '10px 14px',
-                fontWeight: 800, fontSize: 13, cursor: 'pointer',
-                width: '100%',
-              }}
-            >
-              เปิด Dashboard เครื่องนี้ →
-            </button>
-          )}
-        </div>
+      {/* ── 3. Machine HUD Drawer ────────────────────────────────────────── */}
+      {!options.enableEditMode && (
+        <MachineHUDDrawer
+          machineName={hudMachine}
+          status={hudStatus}
+          severity={hudSeverity}
+          isLOTO={hudLOTO}
+          hudColor={hudColor}
+          statusLabel={getStatusLabel(hudStatus)}
+          telemetryData={hudData}
+          tooltipFields={tooltipFieldsParsed}
+          statusFieldName={options.statusFieldName}
+          dashboardUrlTemplate={options.dashboardUrlTemplate}
+          onClose={() => setHudMachine(null)}
+        />
       )}
 
-      {/* ── Add Machine Button & Popup (Edit mode) ─────────────────────────── */}
+      {/* ── 4. Add Machine Button & Modal (Edit mode) ────────────────────── */}
       {options.enableEditMode && (
-        <div style={{ position: 'absolute', top: 15, left: 15, zIndex: 30 }}>
-          {!showAddPopup ? (
-            <button className={styles.addBtn} onClick={() => setShowAddPopup(true)} onPointerDown={(e) => e.stopPropagation()}>
-              + สร้างกล่องใหม่
-            </button>
-          ) : (
-            <div style={{ background: 'rgba(25,25,35,0.95)', border: '1px solid #444', borderRadius: 8, padding: 12, boxShadow: '0 4px 16px rgba(0,0,0,0.5)', display: 'flex', flexDirection: 'column', gap: 8, width: 220 }}
-              onPointerDown={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}
-            >
-              <h5 style={{ margin: 0, color: '#fff', fontSize: 14 }}>สร้าง / กู้คืนกล่อง</h5>
-              <input
-                autoFocus type="text" value={newMachineName}
-                onChange={(e) => setNewMachineName(e.target.value)}
-                placeholder="ระบุชื่อ (ต้องตรงกับ SQL)"
-                style={{ padding: 8, borderRadius: 4, border: '1px solid #555', background: '#111', color: '#fff', fontSize: 13 }}
-                onKeyDown={(e) => e.key === 'Enter' && handleAddMachine()}
-              />
-              <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
-                <button onClick={handleAddMachine} style={{ flex: 1, background: '#00cc44', color: 'white', border: 'none', borderRadius: 4, padding: 8, cursor: 'pointer', fontWeight: 'bold' }}>ตกลง</button>
-                <button onClick={() => { setShowAddPopup(false); setNewMachineName(''); }} style={{ flex: 1, background: '#555', color: 'white', border: 'none', borderRadius: 4, padding: 8, cursor: 'pointer', fontWeight: 'bold' }}>ยกเลิก</button>
-              </div>
-            </div>
-          )}
-        </div>
+        <AddMachineModal
+          isOpen={showAddPopup}
+          machineName={newMachineName}
+          onMachineNameChange={setNewMachineName}
+          onConfirm={handleAddMachine}
+          onCancel={() => { setShowAddPopup(false); setNewMachineName(''); }}
+          onOpen={() => setShowAddPopup(true)}
+        />
       )}
 
       {/* ── Edit Mode Badge ───────────────────────────────────────────────── */}
       {options.enableEditMode && <div className={styles.modeBadge}>🛠️ EDIT MODE ACTIVE</div>}
 
-      {/* ── Edit Control Panel ────────────────────────────────────────────── */}
-      {options.enableEditMode && selectedMachine && (
-        <div onPointerDown={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}
-          style={{ position: 'absolute', bottom: 20, right: 20, zIndex: 30, background: 'rgba(25,25,35,0.95)', border: '1px solid #444', borderRadius: 12, padding: 16, color: '#fff', boxShadow: '0 8px 32px rgba(0,0,0,0.7)', backdropFilter: 'blur(10px)', width: 270 }}>
-          <h4 style={{ margin: '0 0 12px 0', fontSize: 15, borderBottom: '1px solid #555', paddingBottom: 8, color: '#ffaa00' }}>
-            🛠️ ตั้งค่า: {escapeHTML(selectedMachine)}
-          </h4>
-
-          {/* ✏️ Rename Machine Section */}
-          <div style={{ marginBottom: 14, paddingBottom: 12, borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
-            <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 6, fontWeight: 600 }}>✏️ เปลี่ยนชื่อเครื่องจักร:</div>
-            <div style={{ display: 'flex', gap: 6 }}>
-              <input
-                type="text"
-                value={renameInput}
-                onChange={(e) => setRenameInput(e.target.value)}
-                placeholder="ระบุชื่อใหม่ (เช่น LDI-88)"
-                onKeyDown={(e) => e.key === 'Enter' && handleRenameMachine()}
-                style={{
-                  flex: 1, padding: '6px 8px', borderRadius: 4,
-                  border: '1px solid #555', background: '#111', color: '#fff', fontSize: 12
-                }}
-              />
-              <button
-                onClick={handleRenameMachine}
-                style={{
-                  background: '#0284c7', color: '#fff', border: 'none',
-                  borderRadius: 4, padding: '6px 10px', fontSize: 12,
-                  fontWeight: 'bold', cursor: 'pointer'
-                }}
-                title="เปลี่ยนชื่อและผูกข้อมูลกับเครื่องนี้ทันที"
-              >
-                บันทึก
-              </button>
-            </div>
-          </div>
-
-          <div style={{ display: 'grid', gap: 9 }}>
-            {[
-              { label: 'กว้าง (X)', prop: 'scaleX', delta: 0.5 },
-              { label: 'สูง (Y)', prop: 'scaleY', delta: 0.5 },
-              { label: 'ลึก (Z)', prop: 'scaleZ', delta: 0.5 },
-            ].map(item => (
-              <div key={item.prop} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontSize: 12, color: '#bbb' }}>{escapeHTML(item.label)}</span>
-                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                  <button onClick={() => adjustProperty(item.prop as any, -item.delta)} className={styles.iconBtn}>-</button>
-                  <span style={{ display: 'inline-block', width: 35, textAlign: 'center', fontSize: 12, fontWeight: 'bold' }}>
-                    {formatTelemetryValue((options.machineConfigs?.[selectedMachine] as any)?.[item.prop] || 1)}
-                  </span>
-                  <button onClick={() => adjustProperty(item.prop as any, item.delta)} className={styles.iconBtn}>+</button>
-                </div>
-              </div>
-            ))}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 2 }}>
-              <span style={{ fontSize: 12, color: '#bbb' }}>หมุน (องศา)</span>
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                <button onClick={() => adjustProperty('rotationY', -Math.PI / 8)} className={styles.iconBtn}>↺</button>
-                <span style={{ display: 'inline-block', width: 35, textAlign: 'center', fontSize: 12, fontWeight: 'bold' }}>
-                  {Math.round(((options.machineConfigs?.[selectedMachine]?.rotationY) || 0) * (180 / Math.PI))}°
-                </span>
-                <button onClick={() => adjustProperty('rotationY', Math.PI / 8)} className={styles.iconBtn}>↻</button>
-              </div>
-            </div>
-          </div>
-          <button className={styles.deleteBtn} onClick={handleDeleteSelected}>🗑️ ลบกล่องนี้</button>
-        </div>
+      {/* ── 5. Edit Control Panel ─────────────────────────────────────────── */}
+      {options.enableEditMode && (
+        <EditControlPanel
+          selectedMachine={selectedMachine}
+          machineConfig={selectedMachine ? options.machineConfigs?.[selectedMachine] : undefined}
+          renameInput={renameInput}
+          onRenameInputChange={setRenameInput}
+          onRename={handleRenameMachine}
+          onAdjustProperty={adjustProperty}
+          onDelete={handleDeleteSelected}
+        />
       )}
     </div>
   );
