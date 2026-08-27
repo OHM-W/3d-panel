@@ -1,4 +1,4 @@
-﻿import * as THREE from 'three';
+import * as THREE from 'three';
 
 export class TextureManager {
   private cache: Map<string, THREE.Texture> = new Map();
@@ -63,6 +63,16 @@ export class TextureManager {
       console.warn('[TextureManager] Failed to load floorplan URL:', cleanUrl, err);
     };
     img.src = cleanUrl;
+  }
+
+  public restoreContext() {
+    if (this.floorMaterial.map) {
+      this.floorMaterial.map.needsUpdate = true;
+    }
+    for (const [, tex] of this.cache.entries()) {
+      tex.needsUpdate = true;
+    }
+    this.floorMaterial.needsUpdate = true;
   }
 
   public dispose() {
