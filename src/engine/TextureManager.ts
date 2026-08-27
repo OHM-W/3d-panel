@@ -62,7 +62,7 @@ export class TextureManager {
     img.onerror = (err) => {
       console.warn('[TextureManager] Failed to load floorplan URL:', cleanUrl, err);
     };
-    img.src = cleanUrl;
+    img.src = encodeURI(cleanUrl);
   }
 
   public restoreContext() {
