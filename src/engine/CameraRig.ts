@@ -17,7 +17,6 @@ export class CameraRig {
   private moveSpeed = 12.0;
   private velocity = new THREE.Vector3();
   private direction = new THREE.Vector3();
-  private isPointerLocked = false;
   private euler = new THREE.Euler(0, 0, 0, 'YXZ');
   private onKeyDownBound: (e: KeyboardEvent) => void;
   private onKeyUpBound: (e: KeyboardEvent) => void;
@@ -37,6 +36,10 @@ export class CameraRig {
     window.addEventListener('keydown', this.onKeyDownBound);
     window.addEventListener('keyup', this.onKeyUpBound);
     this.domElement.addEventListener('mousemove', this.onMouseMoveBound);
+  }
+
+  public getMode(): CameraMode {
+    return this.mode;
   }
 
   public setMode(newMode: CameraMode, floorSize = 50) {
@@ -65,6 +68,10 @@ export class CameraRig {
       this.orbit.target.set(0, 0, 0);
       this.orbit.update();
     }
+  }
+
+  public resetView(floorSize = 50) {
+    this.setMode(this.mode, floorSize);
   }
 
   public focusOn(targetPos: THREE.Vector3, distance = 8) {
@@ -132,6 +139,7 @@ export class CameraRig {
   }
 
   private onKeyUp(e: KeyboardEvent) {
+    if (this.mode !== 'walkthrough') return;
     if (['ArrowUp', 'KeyW'].includes(e.code)) this.moveState.forward = false;
     if (['ArrowDown', 'KeyS'].includes(e.code)) this.moveState.backward = false;
     if (['ArrowLeft', 'KeyA'].includes(e.code)) this.moveState.left = false;

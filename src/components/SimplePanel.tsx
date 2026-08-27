@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { PanelProps, FieldConfigSource, getActiveThreshold } from '@grafana/data';
-import { SimpleOptions, MachineLayoutConfig, AlarmSeverity } from '../types';
+import { SimpleOptions, MachineLayoutConfig, AlarmSeverity, CameraMode } from '../types';
 import { css, cx } from '@emotion/css';
 import { useStyles2, useTheme2 } from '@grafana/ui';
 import * as THREE from 'three';
@@ -26,13 +26,35 @@ const getStyles = () => ({
     box-shadow: 0 4px 12px rgba(0,0,0,0.5); pointer-events: none;
   `,
   walkthroughBadge: css`
-    position: absolute; bottom: 20px; left: 20px; z-index: 20;
-    background: rgba(15, 23, 42, 0.85); color: #38bdf8;
-    border: 1px solid rgba(56, 189, 248, 0.4);
-    padding: 8px 16px; border-radius: 8px;
-    font-size: 12px; font-weight: 600;
-    box-shadow: 0 4px 16px rgba(0,0,0,0.6);
-    backdrop-filter: blur(8px); pointer-events: none;
+    position: absolute; bottom: 20px; left: 20px; z-index: 25;
+    background: rgba(15, 23, 42, 0.92); color: #38bdf8;
+    border: 1px solid rgba(56, 189, 248, 0.5);
+    padding: 10px 18px; border-radius: 10px;
+    font-size: 13px; font-weight: 600;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.7);
+    backdrop-filter: blur(10px); pointer-events: none;
+    display: flex; align-items: center; gap: 8px;
+  `,
+  cameraToolbar: css`
+    position: absolute; top: 15px; left: 15px; z-index: 30;
+    display: flex; gap: 4px;
+    background: rgba(15, 23, 42, 0.9);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    padding: 4px; border-radius: 8px;
+    backdrop-filter: blur(10px);
+    box-shadow: 0 6px 20px rgba(0,0,0,0.6);
+  `,
+  camBtn: css`
+    background: transparent; color: #94a3b8;
+    border: none; border-radius: 6px;
+    padding: 6px 12px; font-size: 12px; font-weight: 700;
+    cursor: pointer; transition: all 0.2s;
+    display: flex; align-items: center; gap: 6px;
+    &:hover { background: rgba(255,255,255,0.1); color: #fff; }
+  `,
+  camBtnActive: css`
+    background: #0284c7 !important; color: #fff !important;
+    box-shadow: 0 2px 8px rgba(2, 132, 199, 0.5);
   `,
   iconBtn: css`
     background: #333; border: 1px solid #555; color: white;
@@ -126,6 +148,7 @@ export const SimplePanel: React.FC<Props> = ({ options, data, width, height, onO
   const [showAddPopup, setShowAddPopup] = useState(false);
   const [newMachineName, setNewMachineName] = useState('');
   const [hudMachine, setHudMachine] = useState<string | null>(null);
+  const [camMode, setCamMode] = useState<CameraMode>(options.cameraPreset || 'perspective');
 
   // ─── Three.js & Engine Refs ───────────────────────────────────────────────
   const sceneRef = useRef<THREE.Scene | null>(null);
@@ -149,10 +172,27 @@ export const SimplePanel: React.FC<Props> = ({ options, data, width, height, onO
   const labelsRef = useRef<Map<string, HTMLDivElement>>(new Map());
   const lastDragEnd = useRef(0);
 
-  // ─── Effect: Camera Navigation Mode ───────────────────────────────────────
+  // ─── Switch Camera Mode Handler ───────────────────────────────────────────
+  const handleSwitchCamMode = (newMode: CameraMode) => {
+    setCamMode(newMode);
+    if (cameraRigRef.current) {
+      cameraRigRef.current.setMode(newMode, options.floorSize || 50);
+    }
+  };
+
+  const handleResetCamera = () => {
+    if (cameraRigRef.current) {
+      cameraRigRef.current.resetView(options.floorSize || 50);
+    }
+  };
+
+  // Sync camMode if options.cameraPreset changes from panel options
   useEffect(() => {
-    if (cameraRigRef.current && sceneReady) {
-      cameraRigRef.current.setMode(options.cameraPreset || 'perspective', options.floorSize || 50);
+    if (options.cameraPreset && options.cameraPreset !== camMode) {
+      setCamMode(options.cameraPreset);
+      if (cameraRigRef.current && sceneReady) {
+        cameraRigRef.current.setMode(options.cameraPreset, options.floorSize || 50);
+      }
     }
   }, [options.cameraPreset, options.floorSize, sceneReady]);
 
@@ -751,8 +791,53 @@ export const SimplePanel: React.FC<Props> = ({ options, data, width, height, onO
 
   return (
     <div className={cx(styles.wrapper, css`width: ${width}px; height: ${height}px;`)}>
+      {/* 3D Canvas */}
       <div ref={mountRef} />
 
+      {/* ── Floating On-Screen Camera Toolbar ──────────────────────────────── */}
+      {!options.enableEditMode && (
+        <div className={styles.cameraToolbar}>
+          <button
+            onClick={() => handleSwitchCamMode('perspective')}
+            className={cx(styles.camBtn, camMode === 'perspective' && styles.camBtnActive)}
+            title="มุมมอง 3D หมุน แพน ซูม ได้อิสระ"
+          >
+            🌐 3D Orbit
+          </button>
+          <button
+            onClick={() => handleSwitchCamMode('top')}
+            className={cx(styles.camBtn, camMode === 'top' && styles.camBtnActive)}
+            title="มุมมองด้านบน 2D Top-Down แบบแปลนผังโรงงาน"
+          >
+            📐 2D Plan
+          </button>
+          <button
+            onClick={() => handleSwitchCamMode('walkthrough')}
+            className={cx(styles.camBtn, camMode === 'walkthrough' && styles.camBtnActive)}
+            title="โหมดเดินสำรวจโรงงานเสมือนจริงด้วยปุ่ม W, A, S, D"
+          >
+            🚶‍♂️ Walk (WASD)
+          </button>
+          <button
+            onClick={handleResetCamera}
+            className={styles.camBtn}
+            title="รีเซ็ตมุมกล้องกลับจุดเริ่มต้น"
+            style={{ borderLeft: '1px solid rgba(255,255,255,0.15)', paddingLeft: 8 }}
+          >
+            🎯 Reset
+          </button>
+        </div>
+      )}
+
+      {/* ── Walkthrough Mode Key Help ──────────────────────────────────────── */}
+      {camMode === 'walkthrough' && !options.enableEditMode && (
+        <div className={styles.walkthroughBadge}>
+          <span style={{ fontSize: 16 }}>🚶‍♂️</span>
+          <span><b>โหมดเดินสำรวจ:</b> กด <b>W, A, S, D</b> เพื่อเดิน | คลิกซ้ายค้างแล้วเลื่อนเมาส์เพื่อหันมุมมอง</span>
+        </div>
+      )}
+
+      {/* Floating Labels */}
       <div
         ref={labelsContainerRef}
         style={{
@@ -762,6 +847,7 @@ export const SimplePanel: React.FC<Props> = ({ options, data, width, height, onO
         }}
       />
 
+      {/* ── Machine HUD Drawer ────────────────────────────────────────────── */}
       {hudMachine && !options.enableEditMode && (
         <div
           onPointerDown={(e) => e.stopPropagation()}
@@ -858,12 +944,7 @@ export const SimplePanel: React.FC<Props> = ({ options, data, width, height, onO
         </div>
       )}
 
-      {options.cameraPreset === 'walkthrough' && !options.enableEditMode && (
-        <div className={styles.walkthroughBadge}>
-          🚶‍♂️ <b>Walkthrough:</b> ใช้ปุ่ม <b>W, A, S, D</b> เพื่อเดินสำรวจ | คลิกซ้ายลากเพื่อหันมุมมอง
-        </div>
-      )}
-
+      {/* ── Add Machine Button & Popup (Edit mode) ─────────────────────────── */}
       {options.enableEditMode && (
         <div style={{ position: 'absolute', top: 15, left: 15, zIndex: 30 }}>
           {!showAddPopup ? (
@@ -891,8 +972,10 @@ export const SimplePanel: React.FC<Props> = ({ options, data, width, height, onO
         </div>
       )}
 
+      {/* ── Edit Mode Badge ───────────────────────────────────────────────── */}
       {options.enableEditMode && <div className={styles.modeBadge}>🛠️ EDIT MODE ACTIVE</div>}
 
+      {/* ── Edit Control Panel ────────────────────────────────────────────── */}
       {options.enableEditMode && selectedMachine && (
         <div onPointerDown={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}
           style={{ position: 'absolute', bottom: 20, right: 20, zIndex: 30, background: 'rgba(25,25,35,0.95)', border: '1px solid #444', borderRadius: 12, padding: 16, color: '#fff', boxShadow: '0 8px 32px rgba(0,0,0,0.7)', backdropFilter: 'blur(10px)', width: 260 }}>
