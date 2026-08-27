@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState, MutableRefObject } from 'react';
 import * as THREE from 'three';
+import { FieldConfigSource, GrafanaTheme2 } from '@grafana/data';
 import { DragControls } from 'three/examples/jsm/controls/DragControls';
-import { SimpleOptions, CameraMode } from '../types';
+import { SimpleOptions, CameraMode, AlarmSeverity } from '../types';
 import { CameraRig } from '../engine/CameraRig';
 import { AlarmRenderer } from '../engine/AlarmRenderer';
 import { TextureManager } from '../engine/TextureManager';
@@ -12,13 +13,13 @@ interface UseThreeSceneParams {
   options: SimpleOptions;
   width: number;
   height: number;
-  fieldConfig: any;
-  theme: any;
+  fieldConfig: FieldConfigSource;
+  theme: GrafanaTheme2;
   optionsRef: MutableRefObject<SimpleOptions>;
   onOptionsChangeRef: MutableRefObject<((options: SimpleOptions) => void) | undefined>;
   sqlColumnsRef: MutableRefObject<Map<string, Map<string, number>>>;
   statusRef: MutableRefObject<Map<string, number | undefined>>;
-  severityRef: MutableRefObject<Map<string, any>>;
+  severityRef: MutableRefObject<Map<string, AlarmSeverity>>;
   lotoRef: MutableRefObject<Map<string, boolean>>;
   labelsRef: MutableRefObject<Map<string, HTMLDivElement>>;
   tooltipFieldsParsed: TooltipFieldDef[];
@@ -447,6 +448,18 @@ export function useThreeScene({
       dControls.dispose();
 
       if (tooltip.parentNode) tooltip.parentNode.removeChild(tooltip);
+
+      // Dispose all machine meshes
+      for (const mesh of machinesRef.current.values()) {
+        mesh.geometry.dispose();
+        if (Array.isArray(mesh.material)) {
+          mesh.material.forEach(m => m.dispose());
+        } else {
+          mesh.material.dispose();
+        }
+      }
+      machinesRef.current.clear();
+      meshesArrayRef.current.length = 0;
 
       renderer.forceContextLoss();
       renderer.dispose();

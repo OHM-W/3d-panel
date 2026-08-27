@@ -1,9 +1,9 @@
 /**
  * 🚦 Utility functions for Machine Status & ISA-101 Threshold Mappings
  */
-import { FieldConfigSource, getActiveThreshold } from '@grafana/data';
+import { FieldConfigSource, getActiveThreshold, GrafanaTheme2 } from '@grafana/data';
 
-export function getStatusColor(status: number | undefined, fieldConfig: FieldConfigSource, theme: any): string {
+export function getStatusColor(status: number | undefined, fieldConfig: FieldConfigSource, theme: GrafanaTheme2): string {
   if (status === undefined || status === null || isNaN(Number(status))) {
     return theme.visualization.getColorByName('semi-dark-gray') || '#64748B';
   }
