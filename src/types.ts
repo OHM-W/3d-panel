@@ -1,4 +1,4 @@
-﻿// --- Machine Status -------------------------------------------------------
+// --- Machine Status -------------------------------------------------------
 // 0 = NO_DATA (Gray)  -- ไม่มีข้อมูล / เครื่องดับ
 // 1 = IDLE    (Amber) -- เครื่องพร้อมแต่ไม่ได้ผลิต
 // 2 = RUNNING (Green) -- กำลังผลิต
@@ -13,39 +13,48 @@ export interface MachineLayoutConfig {
   scaleZ: number;
   rotationY: number;
   hidden?: boolean;
+  modelUrl?: string; // Custom GLTF/GLB 3D model for this specific machine
 }
 
 export interface SimpleOptions {
-  // Floorplan & Camera
+  // ─── 🏷️ Labels & Tooltips ───────────────────────────────────────────────
+  showLabels?: boolean;
+  enableTooltip: boolean;
+  tooltipFields: string;
+  showHUD: boolean;
+  dashboardUrlTemplate: string;
+
+  // ─── 🏢 Floorplan & Camera ──────────────────────────────────────────────
   floorplanUrl: string;
   floorSize: number;
   cameraPreset: 'perspective' | 'top';
 
-  // Edit Mode
+  // ─── 🌡️ Spatial Floor Heatmap (Industry 4.0) ────────────────────────────
+  enableHeatmap: boolean;
+  heatmapMetric: string; // e.g. 'temperature' or 'humidity'
+  heatmapMin: number;    // e.g. 20
+  heatmapMax: number;    // e.g. 30
+  heatmapRadius: number; // Influence radius (default: 10)
+
+  // ─── 🤖 3D Models ────────────────────────────────────────────────────────
+  defaultModelUrl: string; // Default .glb / .gltf model URL
+
+  // ─── 🛠️ Edit Mode ────────────────────────────────────────────────────────
   enableEditMode: boolean;
   enableGrid: boolean;
   gridSize: number;
   enableSnap: boolean;
-
-  // Auto Discovery
   boxWidth: number;
   boxHeight: number;
   boxDepth: number;
 
-  // Data Binding (configurable field names)
-  machineNameField: string;   // column ชื่อเครื่อง  (default: machine_name)
-  statusFieldName: string;    // column สถานะ        (default: status)
+  // ─── 📊 Data Binding ─────────────────────────────────────────────────────
+  machineNameField: string;
+  statusFieldName: string;
 
-  // Interaction
-  enableTooltip: boolean;
-  tooltipFields: string;      // e.g. temperature=Temp:C, humidity=Humidity:%
-  dashboardUrlTemplate: string;
-  showHUD: boolean;
-  showLabels?: boolean;           // เปิด Machine Info Drawer เมื่อคลิก
+  // ─── 🚨 Visual Effects ───────────────────────────────────────────────────
+  enableAlarmEffects: boolean;
 
-  // Visual Effects
-  enableAlarmEffects: boolean; // Strobe PointLight เมื่อ status = 3
-
-  // Machine Configs (Layout)
+  // ─── 📦 Machine Layout Configs ───────────────────────────────────────────
   machineConfigs: Record<string, MachineLayoutConfig>;
 }

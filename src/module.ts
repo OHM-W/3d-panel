@@ -13,7 +13,7 @@ export const plugin = new PanelPlugin<SimpleOptions>(SimplePanel)
         mode: ThresholdsMode.Absolute,
         steps: [
           { color: 'semi-dark-gray', value: null as unknown as number },
-          { color: 'semi-dark-green', value: 0 },
+          { color: 'semi-dark-blue', value: 0 },
           { color: 'semi-dark-yellow', value: 1 },
           { color: 'semi-dark-green', value: 2 },
           { color: 'dark-red', value: 3 },
@@ -60,7 +60,53 @@ export const plugin = new PanelPlugin<SimpleOptions>(SimplePanel)
         category: ['🏷️ Labels & Tooltips'],
       })
 
-      // ─── 🏢 2. Floorplan & Camera ──────────────────────────────────────────
+      // ─── 🌡️ 2. Spatial Floor Heatmap (Industry 4.0) ──────────────────────
+      .addBooleanSwitch({
+        path: 'enableHeatmap',
+        name: 'Enable Floor Heatmap',
+        description: 'เปิดแผนที่ความร้อน/ความชื้น 3D ไล่เฉดสีบนพื้นโรงงาน (GLSL Shader)',
+        defaultValue: false,
+        category: ['🌡️ Spatial Floor Heatmap'],
+      })
+      .addTextInput({
+        path: 'heatmapMetric',
+        name: 'Heatmap Metric Column',
+        description: 'ชื่อ Column ใน SQL ที่ใช้คำนวณ Heatmap (เช่น temperature, humidity)',
+        defaultValue: 'temperature',
+        category: ['🌡️ Spatial Floor Heatmap'],
+      })
+      .addNumberInput({
+        path: 'heatmapMin',
+        name: 'Min Value (Blue/Cool)',
+        description: 'ค่าต่ำสุดสำหรับเฉดสีน้ำเงิน/เขียว (default: 20)',
+        defaultValue: 20,
+        category: ['🌡️ Spatial Floor Heatmap'],
+      })
+      .addNumberInput({
+        path: 'heatmapMax',
+        name: 'Max Value (Red/Hot)',
+        description: 'ค่าสูงสุดสำหรับเฉดสีแดง/ร้อน (default: 30)',
+        defaultValue: 30,
+        category: ['🌡️ Spatial Floor Heatmap'],
+      })
+      .addNumberInput({
+        path: 'heatmapRadius',
+        name: 'Heat Dispersion Radius',
+        description: 'รัศมีการกระจายตัวของความร้อนในพื้นที่ 3D (default: 10)',
+        defaultValue: 10,
+        category: ['🌡️ Spatial Floor Heatmap'],
+      })
+
+      // ─── 🤖 3. 3D Machine Models (GLTF / GLB) ──────────────────────────────
+      .addTextInput({
+        path: 'defaultModelUrl',
+        name: 'Default 3D Model URL (.glb / .gltf)',
+        description: 'URL ของไฟล์ 3D Model เครื่องจักรมาตรฐาน (ถ้าปล่อยว่างจะใช้กล่อง Cube อัตโนมัติ)',
+        defaultValue: '',
+        category: ['🤖 3D Machine Models'],
+      })
+
+      // ─── 🏢 4. Floorplan & Camera ──────────────────────────────────────────
       .addTextInput({
         path: 'floorplanUrl',
         name: 'Floorplan Image URL',
@@ -88,7 +134,7 @@ export const plugin = new PanelPlugin<SimpleOptions>(SimplePanel)
         category: ['🏢 Floorplan & Camera'],
       })
 
-      // ─── 🛠️ 3. Edit & Layout Mode ──────────────────────────────────────────
+      // ─── 🛠️ 5. Edit & Layout Mode ──────────────────────────────────────────
       .addBooleanSwitch({
         path: 'enableEditMode',
         name: 'Enable Edit Mode',
@@ -133,7 +179,7 @@ export const plugin = new PanelPlugin<SimpleOptions>(SimplePanel)
         category: ['🛠️ Edit & Layout Mode'],
       })
 
-      // ─── 📊 4. Data Binding ───────────────────────────────────────────────
+      // ─── 📊 6. Data Binding ───────────────────────────────────────────────
       .addTextInput({
         path: 'machineNameField',
         name: 'Machine Name Column',
@@ -149,7 +195,7 @@ export const plugin = new PanelPlugin<SimpleOptions>(SimplePanel)
         category: ['📊 Data Binding'],
       })
 
-      // ─── 🚨 5. Visual Effects & Alarms ────────────────────────────────────
+      // ─── 🚨 7. Visual Effects & Alarms ────────────────────────────────────
       .addBooleanSwitch({
         path: 'enableAlarmEffects',
         name: 'Alarm Strobe Beacon',
