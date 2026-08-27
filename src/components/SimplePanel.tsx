@@ -784,17 +784,51 @@ export const SimplePanel: React.FC<Props> = ({ options, data, width, height, onO
     }
   }, [width, height]);
 
-  // ─── Floorplan Texture ────────────────────────────────────────────────────
+  // ─── Floorplan Texture (High-Performance Optimized Loader) ────────────────
+  const texCacheRef = useRef<Map<string, THREE.Texture>>(new Map());
+
   useEffect(() => {
     if (!floorMatRef.current) { return; }
     const urlToLoad = options.floorplanUrl?.trim() || defaultFloorplanUrl;
-    new THREE.TextureLoader().load(urlToLoad, (tex) => {
-      tex.colorSpace = THREE.SRGBColorSpace;
-      floorMatRef.current!.map?.dispose();
-      floorMatRef.current!.map = tex;
-      floorMatRef.current!.color.setHex(0xffffff);
-      floorMatRef.current!.needsUpdate = true;
-    });
+    if (!urlToLoad) { return; }
+
+    // Check memory cache for instant swap (0ms)
+    if (texCacheRef.current.has(urlToLoad)) {
+      const cachedTex = texCacheRef.current.get(urlToLoad)!;
+      floorMatRef.current.map = cachedTex;
+      floorMatRef.current.color.setHex(0xffffff);
+      floorMatRef.current.needsUpdate = true;
+      return;
+    }
+
+    const loader = new THREE.TextureLoader();
+    loader.setCrossOrigin('anonymous');
+    loader.load(
+      urlToLoad,
+      (tex) => {
+        tex.colorSpace = THREE.SRGBColorSpace;
+        // ⚡ Performance Fix: Disable CPU mipmap generation for instant WebGL upload
+        tex.generateMipmaps = false;
+        tex.minFilter = THREE.LinearFilter;
+        tex.magFilter = THREE.LinearFilter;
+        if (rendererRef.current) {
+          tex.anisotropy = Math.min(4, rendererRef.current.capabilities.getMaxAnisotropy());
+        }
+
+        // Cache texture
+        texCacheRef.current.set(urlToLoad, tex);
+
+        if (floorMatRef.current) {
+          floorMatRef.current.map = tex;
+          floorMatRef.current.color.setHex(0xffffff);
+          floorMatRef.current.needsUpdate = true;
+        }
+      },
+      undefined,
+      (err) => {
+        console.warn('[IMS 3D Panel] Failed to load floorplan image:', urlToLoad, err);
+      }
+    );
   }, [options.floorplanUrl]);
 
   // ─── Property Adjuster (HTML UI) ──────────────────────────────────────────
