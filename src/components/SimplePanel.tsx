@@ -78,6 +78,29 @@ const getStyles = () => ({
   `,
 });
 
+// ─── 🛡️ Security: High-Performance HTML Sanitizer (XSS Prevention) ───────────
+function escapeHTML(str: string | number | null | undefined): string {
+  if (str === null || str === undefined) return '';
+  const s = String(str);
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+// ─── 📊 Formatting: Telemetry & Number Formatting ───────────────────────────
+function formatTelemetryValue(val: any): string {
+  if (typeof val === 'number') {
+    if (isNaN(val)) return '—';
+    return Number.isInteger(val)
+      ? val.toLocaleString()
+      : val.toLocaleString(undefined, { maximumFractionDigits: 2 });
+  }
+  return escapeHTML(val ?? '—');
+}
+
 // ─── Status & ISA-101 Helpers ───────────────────────────────────────────────
 function getStatusColor(status: number | undefined, fieldConfig: FieldConfigSource, theme: any): string {
   if (status === undefined || status === null || isNaN(Number(status))) {
@@ -317,7 +340,7 @@ export const SimplePanel: React.FC<Props> = ({ options, data, width, height, onO
         scene.add(mesh);
         machinesRef.current.set(name, mesh);
 
-        // Label element
+        // Label element with XSS escaping
         const label = document.createElement('div');
         label.style.cssText = `
           position: absolute; top: 0; left: 0;
@@ -355,7 +378,7 @@ export const SimplePanel: React.FC<Props> = ({ options, data, width, height, onO
       }
     }
 
-    // 4. Update Status Colors & ISA-101 Badges
+    // 4. Update Status Colors & ISA-101 Badges (with XSS Sanitization)
     for (const [name, mesh] of machinesRef.current.entries()) {
       const machineSQL = freshSQL.get(name);
       let rawStatus = machineSQL?.get(statusCol) ?? machineSQL?.get('value');
@@ -375,7 +398,7 @@ export const SimplePanel: React.FC<Props> = ({ options, data, width, height, onO
         opts.enableLOTO !== false
       );
 
-      // Label Content with ISA-101 Badge
+      // Label Content with ISA-101 Badge (Strictly Escaped)
       const label = labelsRef.current.get(name);
       if (label) {
         let badgeHtml = '';
@@ -387,12 +410,15 @@ export const SimplePanel: React.FC<Props> = ({ options, data, width, height, onO
           badgeHtml = '<span style="background:#d97706;color:#fff;padding:1px 4px;border-radius:3px;font-size:9px;font-weight:bold;margin-left:4px">◆ MAJOR</span>';
         }
 
+        const safeName = escapeHTML(name);
+        const safeStatusLabel = escapeHTML(getStatusLabel(rawStatus));
+
         label.innerHTML = `
           <div style="display:flex;align-items:center;justify-content:space-between">
-            <b style="color:#eee">${name}</b>
+            <b style="color:#eee">${safeName}</b>
             ${badgeHtml}
           </div>
-          <span style="color:${hexColor};font-size:10px">${getStatusLabel(rawStatus)}</span>
+          <span style="color:${hexColor};font-size:10px">${safeStatusLabel}</span>
         `;
       }
     }
@@ -415,17 +441,41 @@ export const SimplePanel: React.FC<Props> = ({ options, data, width, height, onO
 
     let renderer: THREE.WebGLRenderer;
     try {
-      renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
     } catch {
       setWebglError('ไม่สามารถเปิดใช้งาน WebGL 3D ได้');
       return;
     }
 
     renderer.setSize(width, height);
-    renderer.setPixelRatio(window.devicePixelRatio);
+    // ⚡ Performance Fix: Cap pixelRatio to max 1.5 for silky 60 FPS on 4K/low-end screens
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
     renderer.shadowMap.enabled = true;
     mountRef.current.appendChild(renderer.domElement);
     rendererRef.current = renderer;
+
+    // ─── 🔄 WebGL Context Loss Recovery Lifecycle ─────────────────────────────
+    let isContextLost = false;
+
+    const onContextLost = (event: Event) => {
+      event.preventDefault();
+      isContextLost = true;
+      console.warn('[IMS 3D Panel] WebGL Context Lost! Pausing render loop gracefully...');
+      if (animId) cancelAnimationFrame(animId);
+    };
+
+    const onContextRestored = () => {
+      console.info('[IMS 3D Panel] WebGL Context Restored! Re-initializing textures & state...');
+      isContextLost = false;
+      if (textureManagerRef.current) {
+        textureManagerRef.current.updateFloorplan(optionsRef.current.floorplanUrl);
+      }
+      lastTime = performance.now();
+      animate();
+    };
+
+    renderer.domElement.addEventListener('webglcontextlost', onContextLost, false);
+    renderer.domElement.addEventListener('webglcontextrestored', onContextRestored, false);
 
     // Initialize Engine Modules
     const cameraRig = new CameraRig(camera, renderer.domElement);
@@ -555,7 +605,7 @@ export const SimplePanel: React.FC<Props> = ({ options, data, width, height, onO
     renderer.domElement.addEventListener('pointerdown', onPointerDown);
     renderer.domElement.addEventListener('pointerup', onPointerUp);
 
-    // Hover Tooltip
+    // Hover Tooltip (Strictly Escaped against XSS)
     const onMouseMove = (event: MouseEvent) => {
       if (optionsRef.current.enableTooltip === false) {
         tooltip.style.display = 'none';
@@ -579,10 +629,13 @@ export const SimplePanel: React.FC<Props> = ({ options, data, width, height, onO
         for (const f of extraFields) {
           const val = machineSQL.get(f.column);
           if (val !== undefined) {
+            const formattedVal = formatTelemetryValue(val);
+            const safeLabel = escapeHTML(f.label);
+            const safeUnit = escapeHTML(f.unit);
             extraHtml += `
               <div style="display:flex;justify-content:space-between;gap:18px;padding:2px 0">
-                <span style="color:#94a3b8">${f.label}</span>
-                <span style="color:#fff;font-weight:600">${val}${f.unit ? ' ' + f.unit : ''}</span>
+                <span style="color:#94a3b8">${safeLabel}</span>
+                <span style="color:#fff;font-weight:600">${formattedVal}${safeUnit ? ' ' + safeUnit : ''}</span>
               </div>`;
           }
         }
@@ -593,15 +646,18 @@ export const SimplePanel: React.FC<Props> = ({ options, data, width, height, onO
         if (tx + 290 > rect.width) tx = event.clientX - rect.left - 295;
         if (ty + 180 > rect.height) ty = event.clientY - rect.top - 185;
 
+        const safeName = escapeHTML(name);
+        const safeStatus = escapeHTML(getStatusLabel(status));
+
         tooltip.innerHTML = `
           <div style="font-size:14px;font-weight:800;color:#fff;border-bottom:1px solid rgba(255,255,255,0.14);padding-bottom:6px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center">
-            <span>${name}</span>
+            <span>${safeName}</span>
             ${isLOTO ? '<span style="color:#38bdf8;font-size:10px;font-weight:bold">🔒 LOTO</span>' : ''}
             ${severity === 'Critical' ? '<span style="color:#ef4444;font-size:10px;font-weight:bold">▲ CRITICAL</span>' : ''}
           </div>
           <div style="display:flex;justify-content:space-between;gap:18px;padding:2px 0">
             <span style="color:#94a3b8">Status</span>
-            <span style="color:${color};font-weight:700">${getStatusLabel(status)}</span>
+            <span style="color:${color};font-weight:700">${safeStatus}</span>
           </div>
           ${extraHtml}
           <div style="margin-top:8px;font-size:10px;color:#64748b;border-top:1px solid rgba(255,255,255,0.08);padding-top:6px">คลิกเพื่อดูรายละเอียดเชิงลึก</div>
@@ -621,6 +677,7 @@ export const SimplePanel: React.FC<Props> = ({ options, data, width, height, onO
     const tempV = new THREE.Vector3();
 
     const animate = () => {
+      if (isContextLost) return;
       animId = requestAnimationFrame(animate);
 
       const now = performance.now();
@@ -679,6 +736,8 @@ export const SimplePanel: React.FC<Props> = ({ options, data, width, height, onO
       renderer.domElement.removeEventListener('pointerdown', onPointerDown);
       renderer.domElement.removeEventListener('pointerup', onPointerUp);
       renderer.domElement.removeEventListener('mousemove', onMouseMove);
+      renderer.domElement.removeEventListener('webglcontextlost', onContextLost);
+      renderer.domElement.removeEventListener('webglcontextrestored', onContextRestored);
 
       cameraRig.dispose();
       alarmRenderer.dispose();
@@ -783,7 +842,7 @@ export const SimplePanel: React.FC<Props> = ({ options, data, width, height, onO
       <div className={styles.wrapper} style={{ width, height, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#111' }}>
         <div style={{ color: '#ef4444', padding: 24, textAlign: 'center', border: '1px solid #ef4444', borderRadius: 8 }}>
           <b>WebGL Error</b>
-          <p>{webglError}</p>
+          <p>{escapeHTML(webglError)}</p>
         </div>
       </div>
     );
@@ -867,7 +926,7 @@ export const SimplePanel: React.FC<Props> = ({ options, data, width, height, onO
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
             <div>
               <div style={{ fontSize: 11, color: '#64748b', fontWeight: 600, letterSpacing: 0.5 }}>MACHINE DETAIL</div>
-              <div style={{ fontSize: 18, fontWeight: 800, color: '#fff', marginTop: 2 }}>{hudMachine}</div>
+              <div style={{ fontSize: 18, fontWeight: 800, color: '#fff', marginTop: 2 }}>{escapeHTML(hudMachine)}</div>
             </div>
             <button
               onClick={() => setHudMachine(null)}
@@ -878,7 +937,7 @@ export const SimplePanel: React.FC<Props> = ({ options, data, width, height, onO
           <div style={{ background: `${hudColor}1a`, border: `1px solid ${hudColor}88`, borderRadius: 8, padding: '10px 12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <div style={{ width: 10, height: 10, borderRadius: '50%', background: hudColor, boxShadow: `0 0 8px ${hudColor}` }} />
-              <span style={{ color: hudColor, fontWeight: 700, fontSize: 13 }}>{getStatusLabel(hudStatus)}</span>
+              <span style={{ color: hudColor, fontWeight: 700, fontSize: 13 }}>{escapeHTML(getStatusLabel(hudStatus))}</span>
             </div>
             {hudLOTO && <span style={{ background: '#0284c7', color: '#fff', padding: '2px 6px', borderRadius: 4, fontSize: 10, fontWeight: 'bold' }}>🔒 LOTO</span>}
             {!hudLOTO && hudSeverity === 'Critical' && <span style={{ background: '#dc2626', color: '#fff', padding: '2px 6px', borderRadius: 4, fontSize: 10, fontWeight: 'bold' }}>▲ CRIT</span>}
@@ -894,8 +953,8 @@ export const SimplePanel: React.FC<Props> = ({ options, data, width, height, onO
                 if (val === undefined) return null;
                 return (
                   <div key={f.column} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ color: '#94a3b8', fontSize: 12 }}>{f.label}</span>
-                    <span style={{ color: '#fff', fontWeight: 600, fontSize: 13 }}>{val}{f.unit ? ` ${f.unit}` : ''}</span>
+                    <span style={{ color: '#94a3b8', fontSize: 12 }}>{escapeHTML(f.label)}</span>
+                    <span style={{ color: '#fff', fontWeight: 600, fontSize: 13 }}>{formatTelemetryValue(val)}{f.unit ? ` ${escapeHTML(f.unit)}` : ''}</span>
                   </div>
                 );
               })}
@@ -910,8 +969,8 @@ export const SimplePanel: React.FC<Props> = ({ options, data, width, height, onO
               if (declaredCols.has(col) || col === statusCol || col === 'value') continue;
               extra.push(
                 <div key={col} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ color: '#64748b', fontSize: 11 }}>{col}</span>
-                  <span style={{ color: '#cbd5e1', fontWeight: 500, fontSize: 12 }}>{val}</span>
+                  <span style={{ color: '#64748b', fontSize: 11 }}>{escapeHTML(col)}</span>
+                  <span style={{ color: '#cbd5e1', fontWeight: 500, fontSize: 12 }}>{formatTelemetryValue(val)}</span>
                 </div>
               );
             }
@@ -980,7 +1039,7 @@ export const SimplePanel: React.FC<Props> = ({ options, data, width, height, onO
         <div onPointerDown={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}
           style={{ position: 'absolute', bottom: 20, right: 20, zIndex: 30, background: 'rgba(25,25,35,0.95)', border: '1px solid #444', borderRadius: 12, padding: 16, color: '#fff', boxShadow: '0 8px 32px rgba(0,0,0,0.7)', backdropFilter: 'blur(10px)', width: 260 }}>
           <h4 style={{ margin: '0 0 16px 0', fontSize: 16, borderBottom: '1px solid #555', paddingBottom: 8, color: '#ffaa00' }}>
-            🛠️ ตั้งค่า: {selectedMachine}
+            🛠️ ตั้งค่า: {escapeHTML(selectedMachine)}
           </h4>
           <div style={{ display: 'grid', gap: 10 }}>
             {[
@@ -989,11 +1048,11 @@ export const SimplePanel: React.FC<Props> = ({ options, data, width, height, onO
               { label: 'ลึก (Z)', prop: 'scaleZ', delta: 0.5 },
             ].map(item => (
               <div key={item.prop} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontSize: 13, color: '#bbb' }}>{item.label}</span>
+                <span style={{ fontSize: 13, color: '#bbb' }}>{escapeHTML(item.label)}</span>
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                   <button onClick={() => adjustProperty(item.prop as any, -item.delta)} className={styles.iconBtn}>-</button>
                   <span style={{ display: 'inline-block', width: 35, textAlign: 'center', fontSize: 13, fontWeight: 'bold' }}>
-                    {(options.machineConfigs?.[selectedMachine] as any)?.[item.prop] || 1}
+                    {formatTelemetryValue((options.machineConfigs?.[selectedMachine] as any)?.[item.prop] || 1)}
                   </span>
                   <button onClick={() => adjustProperty(item.prop as any, item.delta)} className={styles.iconBtn}>+</button>
                 </div>
