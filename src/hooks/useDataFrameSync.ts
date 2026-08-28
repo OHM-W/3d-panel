@@ -58,6 +58,10 @@ export function useDataFrameSync({
 
     // 1. Parse DataFrame
     const freshSQL = new Map<string, Map<string, number>>();
+    statusRef.current.clear();
+    severityRef.current.clear();
+    lotoRef.current.clear();
+
     const stringFields = data.series.flatMap(s => s.fields.filter(f => f.type === 'string'));
     const numberFields = data.series.flatMap(s => s.fields.filter(f => f.type === 'number'));
     const boolFields = data.series.flatMap(s => s.fields.filter(f => f.type === 'boolean'));
