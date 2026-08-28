@@ -27,8 +27,11 @@ interface UseThreeSceneParams {
   setHudMachine: (name: string | null) => void;
   placementMode?: string | null;
   placeMachineAt?: (x: number, z: number) => void;
+  selectedGroup?: Set<string>;
+  setGroupSelection?: (names: string[] | Set<string>) => void;
   toggleGroupSelection?: (name: string) => void;
   clearGroupSelection?: () => void;
+  selectedMachine?: string | null;
   anchorMode?: 'A' | 'B' | null;
   onFloorClickedForAnchor?: (u: number, v: number) => void;
 }
@@ -51,8 +54,11 @@ export function useThreeScene({
   setHudMachine,
   placementMode,
   placeMachineAt,
+  selectedGroup,
+  setGroupSelection,
   toggleGroupSelection,
   clearGroupSelection,
+  selectedMachine,
   anchorMode,
   onFloorClickedForAnchor,
 }: UseThreeSceneParams) {
@@ -73,7 +79,7 @@ export function useThreeScene({
   const machinesRef = useRef<Map<string, THREE.Mesh>>(new Map());
   const floorMeshRef = useRef<THREE.Mesh | null>(null);
   const gridHelperRef = useRef<THREE.GridHelper | null>(null);
-    const dControlsRef = useRef<DragControls | null>(null);
+  const dControlsRef = useRef<DragControls | null>(null);
 
   // Layout Feature Refs
   const placementModeRef = useRef(placementMode);
@@ -86,6 +92,8 @@ export function useThreeScene({
   // Callback Refs to avoid stale closures
   const selectMachineRef = useRef(selectMachine);
   const setHudMachineRef = useRef(setHudMachine);
+  const selectedGroupRef = useRef(selectedGroup);
+  const setGroupSelectionRef = useRef(setGroupSelection);
   const toggleGroupSelectionRef = useRef(toggleGroupSelection);
   const clearGroupSelectionRef = useRef(clearGroupSelection);
 
@@ -96,9 +104,28 @@ export function useThreeScene({
     onFloorClickedForAnchorRef.current = onFloorClickedForAnchor;
     selectMachineRef.current = selectMachine;
     setHudMachineRef.current = setHudMachine;
+    selectedGroupRef.current = selectedGroup;
+    setGroupSelectionRef.current = setGroupSelection;
     toggleGroupSelectionRef.current = toggleGroupSelection;
     clearGroupSelectionRef.current = clearGroupSelection;
-  }, [placementMode, placeMachineAt, anchorMode, onFloorClickedForAnchor, selectMachine, setHudMachine, toggleGroupSelection, clearGroupSelection]);
+  }, [placementMode, placeMachineAt, anchorMode, onFloorClickedForAnchor, selectMachine, setHudMachine, selectedGroup, setGroupSelection, toggleGroupSelection, clearGroupSelection]);
+
+  // Multi-select / Single-select Visual Emissive Highlight (Cyan Glow)
+  useEffect(() => {
+    for (const [name, mesh] of machinesRef.current.entries()) {
+      const isSelected = (selectedGroup && selectedGroup.has(name)) || name === selectedMachine;
+      const mat = mesh.material as THREE.MeshStandardMaterial;
+      if (mat && mat.emissive) {
+        if (isSelected) {
+          mat.emissive.setHex(0x00e5ff);
+          mat.emissiveIntensity = 0.6;
+        } else {
+          mat.emissive.setHex(0x000000);
+          mat.emissiveIntensity = 0.0;
+        }
+      }
+    }
+  }, [selectedGroup, selectedMachine, sceneReady]);
 
   const fieldConfigRef = useRef(fieldConfig);
   const themeRef = useRef(theme);
@@ -320,14 +347,43 @@ export function useThreeScene({
     `;
     mountRef.current.appendChild(tooltip);
 
+    // 2D Marquee Drag Selection Overlay Box
+    const marquee = document.createElement('div');
+    marquee.style.cssText = `
+      position: absolute; display: none; z-index: 80;
+      border: 2px dashed #00e5ff; background: rgba(0, 229, 255, 0.18);
+      pointer-events: none; border-radius: 4px; box-shadow: 0 0 12px rgba(0,229,255,0.3);
+    `;
+    mountRef.current.appendChild(marquee);
+
+    let isMarquee = false;
+    let marqueeStart = { x: 0, y: 0 };
+    let dragStartOffsets = new Map<string, { x: number, z: number }>();
+    let draggedStartPos = { x: 0, z: 0 };
+
     const dControls = new DragControls(meshesArrayRef.current, camera, renderer.domElement);
     dControls.enabled = false;
     dControls.addEventListener('dragstart', (ev) => {
       cameraRig.orbit.enabled = false;
-      selectMachineRef.current(ev.object.userData.name);
+      const mesh = ev.object;
+      const name = mesh.userData.name;
+      selectMachineRef.current(name);
+      draggedStartPos = { x: mesh.position.x, z: mesh.position.z };
+      dragStartOffsets.clear();
+
+      if (selectedGroupRef.current && selectedGroupRef.current.has(name)) {
+        for (const mName of selectedGroupRef.current) {
+          const m = machinesRef.current.get(mName);
+          if (m) {
+            dragStartOffsets.set(mName, { x: m.position.x, z: m.position.z });
+          }
+        }
+      }
     });
+
     dControls.addEventListener('drag', (ev) => {
       const mesh = ev.object;
+      const name = mesh.userData.name;
       
       // Feature 4: Adjustable Snap-to-Grid
       const opts = optionsRef.current;
@@ -339,10 +395,26 @@ export function useThreeScene({
       
       // Lock Y axis so it doesn't float or sink
       mesh.position.y = Math.abs(mesh.scale.y) / 2;
+
+      // Synchronized Group Dragging
+      if (dragStartOffsets.has(name)) {
+        const dx = mesh.position.x - draggedStartPos.x;
+        const dz = mesh.position.z - draggedStartPos.z;
+        for (const [mName, startP] of dragStartOffsets.entries()) {
+          if (mName === name) continue;
+          const peerMesh = machinesRef.current.get(mName);
+          if (peerMesh) {
+            peerMesh.position.x = startP.x + dx;
+            peerMesh.position.z = startP.z + dz;
+          }
+        }
+      }
     });
+
     dControls.addEventListener('dragend', (ev) => {
       cameraRig.orbit.enabled = true;
       const mesh = ev.object;
+      const name = mesh.userData.name;
       const opts = optionsRef.current;
 
       // Snap the final position before saving
@@ -352,11 +424,21 @@ export function useThreeScene({
         mesh.position.z = Math.round(mesh.position.z / snap) * snap;
       }
 
-      const name = mesh.userData.name;
       const fn = onOptionsChangeRef.current;
       if (name && fn) {
         const newConfigs = { ...(opts.machineConfigs || {}) };
-        newConfigs[name] = { ...newConfigs[name], x: mesh.position.x, z: mesh.position.z };
+        if (dragStartOffsets.has(name)) {
+          const dx = mesh.position.x - draggedStartPos.x;
+          const dz = mesh.position.z - draggedStartPos.z;
+          for (const [mName, startP] of dragStartOffsets.entries()) {
+            const finalX = mName === name ? mesh.position.x : startP.x + dx;
+            const finalZ = mName === name ? mesh.position.z : startP.z + dz;
+            newConfigs[mName] = { ...newConfigs[mName], x: finalX, z: finalZ };
+          }
+          dragStartOffsets.clear();
+        } else {
+          newConfigs[name] = { ...newConfigs[name], x: mesh.position.x, z: mesh.position.z };
+        }
         fn({ ...opts, machineConfigs: newConfigs });
       }
     });
@@ -374,10 +456,64 @@ export function useThreeScene({
 
     const onPointerDown = (e: PointerEvent) => {
       pointerDownPos = { x: e.clientX, y: e.clientY, time: Date.now() };
+
+      // Marquee Box Selection start in Edit Mode
+      if (optionsRef.current.enableEditMode) {
+        getMouseNDC(e);
+        raycaster.setFromCamera(mouse, camera);
+        const hits = raycaster.intersectObjects(meshesArrayRef.current);
+        if (hits.length === 0 || e.shiftKey) {
+          isMarquee = true;
+          marqueeStart = { x: e.clientX, y: e.clientY };
+          cameraRig.orbit.enabled = false;
+        }
+      }
     };
 
     const onPointerUp = (e: PointerEvent) => {
       if (e.button !== 0) return;
+
+      // Finish Marquee Drag Selection
+      if (isMarquee) {
+        isMarquee = false;
+        marquee.style.display = 'none';
+        cameraRig.orbit.enabled = true;
+
+        const rect = renderer.domElement.getBoundingClientRect();
+        const startX = marqueeStart.x - rect.left;
+        const startY = marqueeStart.y - rect.top;
+        const endX = e.clientX - rect.left;
+        const endY = e.clientY - rect.top;
+
+        const minX = Math.min(startX, endX);
+        const maxX = Math.max(startX, endX);
+        const minY = Math.min(startY, endY);
+        const maxY = Math.max(startY, endY);
+
+        if (maxX - minX > 8 && maxY - minY > 8) {
+          const selectedNames: string[] = [];
+          const tempV = new THREE.Vector3();
+          for (const [name, mesh] of machinesRef.current.entries()) {
+            mesh.getWorldPosition(tempV);
+            tempV.project(camera);
+            const px = ((tempV.x + 1) / 2) * rect.width;
+            const py = ((-tempV.y + 1) / 2) * rect.height;
+            if (px >= minX && px <= maxX && py >= minY && py <= maxY) {
+              selectedNames.push(name);
+            }
+          }
+          if (setGroupSelectionRef.current) {
+            if (e.shiftKey && selectedGroupRef.current) {
+              const union = new Set(selectedGroupRef.current);
+              selectedNames.forEach(n => union.add(n));
+              setGroupSelectionRef.current(union);
+            } else {
+              setGroupSelectionRef.current(selectedNames);
+            }
+          }
+          return;
+        }
+      }
 
       const dx = Math.abs(e.clientX - pointerDownPos.x);
       const dy = Math.abs(e.clientY - pointerDownPos.y);
@@ -638,6 +774,7 @@ export function useThreeScene({
       dControls.dispose();
 
       if (tooltip.parentNode) tooltip.parentNode.removeChild(tooltip);
+      if (marquee.parentNode) marquee.parentNode.removeChild(marquee);
 
       // Dispose all machine meshes
       for (const mesh of machinesRef.current.values()) {

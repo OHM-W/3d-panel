@@ -1,36 +1,32 @@
 {
-    "$schema":  "https://raw.githubusercontent.com/grafana/grafana/main/docs/sources/developers/plugins/plugin.schema.json",
-    "type":  "panel",
-    "name":  "3D Panel",
-    "id": "3d-panel",
-    "info":  {
-                 "keywords":  [
-                                  "panel"
-                              ],
-                 "description":  "3D Digital Twin Plugin for IMS Manufacturing",
-                 "author":  {
-                                "name":  "Myorg"
-                            },
-                 "logos":  {
-                               "small":  "img/logo.svg",
-                               "large":  "img/logo.svg"
-                           },
-                 "links":  [
-
-                           ],
-                 "screenshots":  [
-                                     {
-                                         "path":  "img/layout.jpg",
-                                         "name":  "Layout"
-                                     }
-                                 ],
-                 "version": "3.5.5",
-                 "updated":  "2026-08-28"
-             },
-    "dependencies":  {
-                         "grafanaDependency":  "\u003e=12.3.0",
-                         "plugins":  [
-
-                                     ]
-                     }
+  "$schema": "https://raw.githubusercontent.com/grafana/grafana/main/docs/sources/developers/plugins/plugin.schema.json",
+  "type": "panel",
+  "name": "3D Panel",
+  "id": "3d-panel",
+  "info": {
+    "keywords": [
+      "panel"
+    ],
+    "description": "3D Digital Twin Plugin for IMS Manufacturing",
+    "author": {
+      "name": "Myorg"
+    },
+    "logos": {
+      "small": "img/logo.svg",
+      "large": "img/logo.svg"
+    },
+    "links": [],
+    "screenshots": [
+      {
+        "path": "img/layout.jpg",
+        "name": "Layout"
+      }
+    ],
+    "version": "3.5.6",
+    "updated": "2026-08-28"
+  },
+  "dependencies": {
+    "grafanaDependency": ">=12.3.0",
+    "plugins": []
+  }
 }

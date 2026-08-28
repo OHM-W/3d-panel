@@ -72,12 +72,12 @@ export const SimplePanel: React.FC<Props> = ({ options, data, width, height, onO
   const layout = useMachineLayout({
     optionsRef,
     onOptionsChangeRef,
-    machinesRef: useRef(new Map()), // initialized below
+    machinesRef: useRef(new Map()),
     labelsRef,
     statusRef,
     severityRef,
     lotoRef,
-    alarmRendererRef: useRef(null), // initialized below
+    alarmRendererRef: useRef(null),
   });
 
   // 2. Three.js Engine & Canvas Hook
@@ -99,14 +99,15 @@ export const SimplePanel: React.FC<Props> = ({ options, data, width, height, onO
     setHudMachine,
     placementMode: layout.placementMode,
     placeMachineAt: layout.placeMachineAt,
+    selectedGroup: layout.selectedGroup,
+    setGroupSelection: layout.setGroupSelection,
     toggleGroupSelection: layout.toggleGroupSelection,
     clearGroupSelection: layout.clearGroupSelection,
+    selectedMachine: layout.selectedMachine,
     anchorMode: layout.anchorMode,
     onFloorClickedForAnchor: layout.onFloorClickedForAnchor,
   });
 
-  // Wire back Three.js refs to layout hook
-  layout.handleAdjustProperty = layout.handleAdjustProperty; // bind methods
   const { machinesRef, meshesArrayRef, alarmRendererRef } = scene;
 
   // 3. DataFrame Data Sync Hook
@@ -164,9 +165,9 @@ export const SimplePanel: React.FC<Props> = ({ options, data, width, height, onO
       {/* 🚶‍♂️ 2. Walkthrough Mode Instructions */}
       <WalkthroughHelp visible={scene.camMode === 'walkthrough' && !options.enableEditMode} />
 
-      {/* 🏷️ 3. Floating 3D Labels Overlay */}
+      {/* 🏷️ 3. Floating 2D Status Labels Container */}
       <FloatingLabelsOverlay
-        ref={scene.labelsContainerRef}
+        containerRef={scene.labelsContainerRef}
         visible={options.showLabels !== false}
       />
 

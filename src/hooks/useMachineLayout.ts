@@ -137,6 +137,11 @@ export function useMachineLayout({
   /** Clear all multi-selected machines */
   const clearGroupSelection = () => setSelectedGroup(new Set());
 
+  /** Set multi-selected machines directly */
+  const setGroupSelection = (names: string[] | Set<string>) => {
+    setSelectedGroup(new Set(names));
+  };
+
   /**
    * Move all machines in the selectedGroup by (dx, dz) delta.
    * Used by drag handlers to translate an entire group at once.
@@ -316,6 +321,7 @@ export function useMachineLayout({
     // Multi-select & Align
     selectedGroup,
     toggleGroupSelection,
+    setGroupSelection,
     clearGroupSelection,
     handleGroupMove,
     handleAlign,
