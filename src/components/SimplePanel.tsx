@@ -97,6 +97,12 @@ export const SimplePanel: React.FC<Props> = ({ options, data, width, height, onO
     tooltipFieldsParsed,
     selectMachine: layout.selectMachine,
     setHudMachine,
+    placementMode: layout.placementMode,
+    placeMachineAt: layout.placeMachineAt,
+    toggleGroupSelection: layout.toggleGroupSelection,
+    clearGroupSelection: layout.clearGroupSelection,
+    anchorMode: layout.anchorMode,
+    onFloorClickedForAnchor: layout.onFloorClickedForAnchor,
   });
 
   // Wire back Three.js refs to layout hook
@@ -190,6 +196,9 @@ export const SimplePanel: React.FC<Props> = ({ options, data, width, height, onO
           onConfirm={layout.handleAddMachine}
           onCancel={() => { layout.setShowAddPopup(false); layout.setNewMachineName(''); }}
           onOpen={() => layout.setShowAddPopup(true)}
+          placementMode={layout.placementMode}
+          onEnterPlacementMode={layout.enterPlacementMode}
+          onExitPlacementMode={layout.exitPlacementMode}
         />
       )}
 
@@ -206,6 +215,8 @@ export const SimplePanel: React.FC<Props> = ({ options, data, width, height, onO
           onRename={layout.handleRenameMachine}
           onAdjustProperty={layout.handleAdjustProperty}
           onDelete={layout.handleDeleteSelected}
+          selectedGroup={layout.selectedGroup}
+          onAlign={layout.handleAlign}
         />
       )}
     </div>

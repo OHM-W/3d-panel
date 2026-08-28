@@ -10,6 +10,9 @@ interface Props {
   onRename: () => void;
   onAdjustProperty: (prop: 'scaleX' | 'scaleY' | 'scaleZ' | 'rotationY', delta: number) => void;
   onDelete: () => void;
+  selectedGroup?: Set<string>;
+  onAlign?: (op: 'left' | 'right' | 'top' | 'bottom' | 'centerH' | 'distH' | 'distV') => void;
+  onStartAnchor?: (mode: 'A' | 'B') => void;
 }
 
 const styles = {
@@ -36,8 +39,10 @@ export const EditControlPanel: React.FC<Props> = ({
   onRename,
   onAdjustProperty,
   onDelete,
+  selectedGroup,
+  onAlign,
 }) => {
-  if (!selectedMachine) return null;
+  if (!selectedMachine && (!selectedGroup || selectedGroup.size < 2)) return null;
 
   return (
     <div
@@ -52,9 +57,36 @@ export const EditControlPanel: React.FC<Props> = ({
         width: 270,
       }}
     >
-      <h4 style={{ margin: '0 0 12px 0', fontSize: 15, borderBottom: '1px solid #555', paddingBottom: 8, color: '#ffaa00' }}>
-        🛠️ ตั้งค่า: {selectedMachine}
-      </h4>
+      {selectedGroup && selectedGroup.size >= 2 ? (
+        <>
+          <h4 style={{ margin: '0 0 12px 0', fontSize: 15, borderBottom: '1px solid #555', paddingBottom: 8, color: '#ffaa00' }}>
+            🔲 จัดกลุ่ม: {selectedGroup.size} เครื่อง
+          </h4>
+          <div style={{ display: 'grid', gap: 6, marginBottom: 8 }}>
+            <div style={{ color: '#94a3b8', fontSize: 12, fontWeight: 600 }}>จัดแนว:</div>
+            <div style={{ display: 'flex', gap: 4 }}>
+              <button onClick={() => onAlign?.('left')} className={styles.iconBtn} title="ชิดซ้าย">⊢</button>
+              <button onClick={() => onAlign?.('centerH')} className={styles.iconBtn} title="กึ่งกลาง">⊣⊢</button>
+              <button onClick={() => onAlign?.('right')} className={styles.iconBtn} title="ชิดขวา">⊣</button>
+              <button onClick={() => onAlign?.('top')} className={styles.iconBtn} title="ชิดบน">⊤</button>
+              <button onClick={() => onAlign?.('bottom')} className={styles.iconBtn} title="ชิดล่าง">⊥</button>
+            </div>
+            {selectedGroup.size >= 3 && (
+              <>
+                <div style={{ color: '#94a3b8', fontSize: 12, fontWeight: 600, marginTop: 4 }}>กระจายช่องไฟ:</div>
+                <div style={{ display: 'flex', gap: 4 }}>
+                  <button onClick={() => onAlign?.('distH')} className={styles.iconBtn} style={{ width: 'auto', padding: '0 8px' }} title="แนวนอน">↔ แนวนอน</button>
+                  <button onClick={() => onAlign?.('distV')} className={styles.iconBtn} style={{ width: 'auto', padding: '0 8px' }} title="แนวตั้ง">↕ แนวตั้ง</button>
+                </div>
+              </>
+            )}
+          </div>
+        </>
+      ) : selectedMachine ? (
+        <>
+          <h4 style={{ margin: '0 0 12px 0', fontSize: 15, borderBottom: '1px solid #555', paddingBottom: 8, color: '#ffaa00' }}>
+            🛠️ ตั้งค่า: {selectedMachine}
+          </h4>
 
       {/* ✏️ Rename Machine Section */}
       <div style={{ marginBottom: 14, paddingBottom: 12, borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
@@ -114,6 +146,8 @@ export const EditControlPanel: React.FC<Props> = ({
         </div>
       </div>
       <button className={styles.deleteBtn} onClick={onDelete}>🗑️ ลบกล่องนี้</button>
+        </>
+      ) : null}
     </div>
   );
 };

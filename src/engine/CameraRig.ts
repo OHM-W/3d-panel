@@ -1,4 +1,4 @@
-﻿import * as THREE from 'three';
+import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
 import { CameraMode } from '../types';
 
@@ -68,12 +68,17 @@ export class CameraRig {
     this.targetCamPos = null;
     this.targetOrbitTarget = null;
 
+    // BUG FIX (HIGH): Reset walkthrough state so switching modes doesn't carry
+    // over stale velocity or stuck key states → camera won't lurch on re-entry
+    this.velocity.set(0, 0, 0);
+    this.moveState = { forward: false, backward: false, left: false, right: false };
+
     if (newMode === 'top') {
       this.orbit.enabled = true;
       this.orbit.enableRotate = false;
       this.orbit.enablePan = true;
       this.orbit.screenSpacePanning = true;
-      this.camera.position.set(0, floorSize * 0.9, 0.001);
+      this.camera.position.set(0, floorSize * 1.2, 0.02);
       this.camera.lookAt(0, 0, 0);
       this.orbit.target.set(0, 0, 0);
       this.orbit.update();
@@ -88,7 +93,7 @@ export class CameraRig {
       this.orbit.enableRotate = true;
       this.orbit.enablePan = true;
       this.orbit.screenSpacePanning = true;
-      this.camera.position.set(0, 22, 28);
+      this.camera.position.set(0, 122, 128);
       this.camera.lookAt(0, 0, 0);
       this.orbit.target.set(0, 0, 0);
       this.orbit.update();

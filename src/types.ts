@@ -1,4 +1,4 @@
-﻿// ─── Machine Status & ISA-101 Standards ─────────────────────────────────────
+// ─── Machine Status & ISA-101 Standards ─────────────────────────────────────
 export type MachineStatus = 0 | 1 | 2 | 3 | 4;
 
 export type AlarmSeverity = 'Critical' | 'Major' | 'Minor' | 'None';
@@ -39,14 +39,24 @@ export interface SimpleOptions {
   lotoFieldName: string;           // column สถานะ LOTO  (default: is_loto)
   enableLiveStreaming: boolean;    // สตรีมข้อมูล Real-time ผ่าน WebSocket
 
+  // ─── 🔗 DB Matching ───────────────────────────────────────────────────────
+  machineNameRegex: string;        // Regex สำหรับดึง key จากชื่อใน DB เช่น .*_(.*?)_.*
+  aliasMappingCsv: string;         // CSV aliases เช่น "LDI-001=siteA_ldi_01, LDI-002=SMT_002"
+
   // ─── 🛠️ 5. Edit & Layout Mode ────────────────────────────────────────────
   enableEditMode: boolean;
+  enableSnap: boolean;             // เปิดการ Snap-to-grid
+  snapSize: number;                // ขนาดกริดที่ใช้ snap
+  showSnapGrid: boolean;           // แสดงเส้นกริด
   enableGrid: boolean;
   gridSize: number;
-  enableSnap: boolean;
   boxWidth?: number;
   boxHeight?: number;
   boxDepth?: number;
+
+  // ─── 🗺️ 7. Anchor Calibration ──────────────────────────────────────────
+  anchorA?: { imageU: number; imageV: number; worldX: number; worldZ: number };
+  anchorB?: { imageU: number; imageV: number; worldX: number; worldZ: number };
 
   // ─── 📦 Machine Layout Configs ───────────────────────────────────────────
   machineConfigs: Record<string, MachineLayoutConfig>;

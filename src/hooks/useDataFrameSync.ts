@@ -5,6 +5,7 @@ import { SimpleOptions, MachineLayoutConfig, AlarmSeverity } from '../types';
 import { AlarmRenderer } from '../engine/AlarmRenderer';
 import { escapeHTML } from '../utils/formatUtils';
 import { getStatusColor, getStatusLabel } from '../utils/statusUtils';
+import { buildAliasLookup, resolveDbToModel } from '../utils/matchingUtils';
 
 interface UseDataFrameSyncParams {
   data: PanelData;
@@ -66,24 +67,40 @@ export function useDataFrameSync({
     const lotoField = boolFields.find(f => f.name === lotoCol) ?? numberFields.find(f => f.name === lotoCol);
 
     if (nameField && (numberFields.length >= 1 || boolFields.length >= 1)) {
-      for (let i = 0; i < nameField.values.length; i++) {
-        const mName = String(nameField.values[i]);
-        if (!mName) continue;
+      // Build alias lookup from user-configured CSV (built once per render, not per row)
+      const aliasLookup = buildAliasLookup(opts.aliasMappingCsv || '');
+      const regex = opts.machineNameRegex?.trim() || undefined;
 
-        if (!freshSQL.has(mName)) freshSQL.set(mName, new Map());
+      // BUG FIX (HIGH): Only read the LAST row per machine to avoid O(N) CPU spike
+      // from raw time-series data. We scan backwards and record only the first
+      // (latest) occurrence of each machine name.
+      const seenMachines = new Set<string>();
+      for (let i = nameField.values.length - 1; i >= 0; i--) {
+        const rawDbName = String(nameField.values[i]);
+        if (!rawDbName) { continue; }
+
+        // SPRINT 2: Resolve DB identifier → 3D model name via alias/regex pipeline
+        const mName = resolveDbToModel(rawDbName, aliasLookup, regex);
+
+        if (seenMachines.has(mName)) { continue; }
+        seenMachines.add(mName);
+
+        if (!freshSQL.has(mName)) { freshSQL.set(mName, new Map()); }
         for (const nf of numberFields) {
           const v = nf.values[i];
-          if (v != null) freshSQL.get(mName)!.set(nf.name, Number(v));
+          if (v != null) { freshSQL.get(mName)!.set(nf.name, Number(v)); }
         }
 
         if (severityField) {
-          const sev = String(severityField.values[i] || 'None') as AlarmSeverity;
+          // BUG FIX (HIGH): Use null check (== null) not falsy (||) so that
+          // numeric severity 0 is not coerced to 'None'
+          const rawSev = severityField.values[i];
+          const sev = (rawSev == null ? 'None' : String(rawSev)) as AlarmSeverity;
           severityRef.current.set(mName, sev);
         }
 
         if (lotoField) {
-          const isL = Boolean(lotoField.values[i]);
-          lotoRef.current.set(mName, isL);
+          lotoRef.current.set(mName, Boolean(lotoField.values[i]));
         }
       }
     }
@@ -154,7 +171,13 @@ export function useDataFrameSync({
       if (!currentConfigNames.includes(name) || configs[name]?.hidden) {
         scene.remove(mesh);
         mesh.geometry.dispose();
-        (mesh.material as THREE.Material).dispose();
+        // BUG FIX (CRITICAL): material can be an array (multi-material mesh), so
+        // blindly casting to THREE.Material would throw TypeError. Check first.
+        if (Array.isArray(mesh.material)) {
+          mesh.material.forEach((m) => m.dispose());
+        } else {
+          mesh.material.dispose();
+        }
         const label = labelsRef.current.get(name);
         if (label?.parentNode) label.parentNode.removeChild(label);
         machinesRef.current.delete(name);

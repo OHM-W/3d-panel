@@ -1,25 +1,25 @@
-﻿import { FieldConfigProperty, PanelPlugin, ThresholdsMode } from '@grafana/data';
+import { FieldConfigProperty, PanelPlugin, ThresholdsMode } from '@grafana/data';
 import { SimpleOptions } from './types';
 import { SimplePanel } from './components/SimplePanel';
 
 export const plugin = new PanelPlugin<SimpleOptions>(SimplePanel)
   .useFieldConfig({
     standardOptions: {
-      [FieldConfigProperty.Thresholds]: {},
-    },
-    useCustomConfig: (_builder) => {},
-    defaults: {
-      thresholds: {
-        mode: ThresholdsMode.Absolute,
-        steps: [
-          { color: 'semi-dark-gray', value: null as unknown as number },
-          { color: 'semi-dark-yellow', value: 1 },
-          { color: 'semi-dark-green', value: 2 },
-          { color: 'dark-red', value: 3 },
-          { color: 'semi-dark-blue', value: 4 }, // LOTO / Maintenance
-        ],
+      [FieldConfigProperty.Thresholds]: {
+        defaultValue: {
+          mode: ThresholdsMode.Absolute,
+          steps: [
+            { color: 'semi-dark-gray', value: null as unknown as number },
+            { color: 'semi-dark-green', value: 0 },
+            { color: 'semi-dark-yellow', value: 1 },
+            { color: 'semi-dark-green', value: 2 },
+            { color: 'dark-red', value: 3 },
+            { color: 'semi-dark-blue', value: 4 }, // LOTO / Maintenance
+          ],
+        },
       },
     },
+    useCustomConfig: (_builder) => {},
   })
   .setPanelOptions((builder) => {
     return builder
@@ -84,7 +84,7 @@ export const plugin = new PanelPlugin<SimpleOptions>(SimplePanel)
           options: [
             { value: 'perspective', label: '🌐 3D Orbit View' },
             { value: 'top', label: '📐 2D Top-Down View' },
-            { value: 'walkthrough', label: '🚶‍♂️ WASD Walkthrough' },
+            // { value: 'walkthrough', label: '🚶‍♂️ WASD Walkthrough' },
           ],
         },
         category: ['🎮 Camera & Navigation'],
@@ -101,8 +101,7 @@ export const plugin = new PanelPlugin<SimpleOptions>(SimplePanel)
       .addNumberInput({
         path: 'floorSize',
         name: 'Floor Size',
-        description: 'ขนาดพื้นที่โรงงาน (default: 50)',
-        defaultValue: 50,
+        description: 'background size ',
         category: ['🏢 Floorplan Plan'],
       })
 
@@ -143,7 +142,23 @@ export const plugin = new PanelPlugin<SimpleOptions>(SimplePanel)
         category: ['⚡ Real-time & Data Binding'],
       })
 
-      // ─── 🛠️ 5. Edit & Layout Mode ──────────────────────────────────────────
+      // ─── 🔗 6. DB Matching ────────────────────────────────────────────────
+      .addTextInput({
+        path: 'machineNameRegex',
+        name: 'Name Extraction Regex',
+        description: 'Regex ดึง key จากชื่อใน DB เช่น .*_(.*?)_status$ จะดึง "ldi01" จาก "siteA_ldi01_status" (ว่าง = ไม่ใช้ Regex)',
+        defaultValue: '',
+        category: ['🔗 DB Matching'],
+      })
+      .addTextInput({
+        path: 'aliasMappingCsv',
+        name: 'Alias Mapping (CSV)',
+        description: 'เชื่อม 3D model name กับ DB identifier เช่น "LDI-001=siteA_ldi_01, LDI-002=SMT_002" (แยกด้วย comma)',
+        defaultValue: '',
+        category: ['🔗 DB Matching'],
+      })
+
+
       .addBooleanSwitch({
         path: 'enableEditMode',
         name: 'Enable Edit Mode',
@@ -152,21 +167,27 @@ export const plugin = new PanelPlugin<SimpleOptions>(SimplePanel)
         category: ['🛠️ Edit & Layout Mode'],
       })
       .addBooleanSwitch({
-        path: 'enableGrid',
-        name: 'Show Grid Floor',
+        path: 'enableSnap',
+        name: 'Enable Snap-to-Grid',
+        description: 'ล็อกตำแหน่งกล่องตามตารางตอนลาก',
         defaultValue: true,
         category: ['🛠️ Edit & Layout Mode'],
+        showIf: (cfg) => cfg.enableEditMode,
       })
       .addNumberInput({
-        path: 'gridSize',
-        name: 'Grid Spacing',
-        defaultValue: 1,
+        path: 'snapSize',
+        name: 'Snap Grid Size',
+        description: 'ขนาด snap (หน่วย world units) เช่น 0.5, 1.0, 2.0',
+        defaultValue: 1.0,
+        settings: { min: 0.1, max: 10, step: 0.1 },
         category: ['🛠️ Edit & Layout Mode'],
+        showIf: (cfg) => cfg.enableEditMode && cfg.enableSnap,
       })
       .addBooleanSwitch({
-        path: 'enableSnap',
-        name: 'Snap to Grid',
-        defaultValue: false,
+        path: 'showSnapGrid',
+        name: 'Show Snap Grid',
+        defaultValue: true,
         category: ['🛠️ Edit & Layout Mode'],
+        showIf: (cfg) => cfg.enableEditMode && cfg.enableSnap,
       });
   });

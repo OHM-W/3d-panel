@@ -1,4 +1,4 @@
-﻿import * as THREE from 'three';
+import * as THREE from 'three';
 import { AlarmSeverity } from '../types';
 
 export class AlarmRenderer {
@@ -20,7 +20,6 @@ export class AlarmRenderer {
     enableLOTOOption: boolean
   ) {
     const isCritical = status === 3 || severity === 'Critical';
-    const isMajor = severity === 'Major';
 
     // 1. ISA-101 360° Strobe Beacon Light
     if (isCritical && enableISA101) {

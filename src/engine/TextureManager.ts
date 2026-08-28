@@ -6,6 +6,9 @@ export class TextureManager {
   private renderer: THREE.WebGLRenderer;
   private currentUrl = '';
 
+  // Callback to notify parent of image aspect ratio once loaded
+  public onAspectRatioReady: ((aspect: number) => void) | null = null;
+
   constructor(floorMaterial: THREE.MeshStandardMaterial, renderer: THREE.WebGLRenderer) {
     this.floorMaterial = floorMaterial;
     this.renderer = renderer;
@@ -37,9 +40,11 @@ export class TextureManager {
     img.crossOrigin = 'anonymous';
     img.onload = () => {
       if (this.currentUrl !== cleanUrl) return; // Prevent race conditions
-      createImageBitmap(img)
+      createImageBitmap(img, { imageOrientation: 'flipY' })
         .then((bitmap) => {
-          if (this.currentUrl !== cleanUrl) return;
+          // CRITICAL FIX: If dispose() was called while bitmap was loading, abort.
+          if (this.currentUrl === '__disposed__' || this.currentUrl !== cleanUrl) return;
+
           const tex = new THREE.Texture(bitmap);
           tex.colorSpace = THREE.SRGBColorSpace;
           tex.generateMipmaps = false;
@@ -54,6 +59,11 @@ export class TextureManager {
           this.floorMaterial.map = tex;
           this.floorMaterial.color.setHex(0xffffff);
           this.floorMaterial.needsUpdate = true;
+
+          // Notify caller with aspect ratio so floor plane can be resized correctly
+          if (this.onAspectRatioReady && bitmap.width > 0 && bitmap.height > 0) {
+            this.onAspectRatioReady(bitmap.width / bitmap.height);
+          }
         })
         .catch((err) => {
           console.warn('[TextureManager] ImageBitmap failed:', err);
@@ -76,6 +86,9 @@ export class TextureManager {
   }
 
   public dispose() {
+    // Mark as disposed so any in-flight async bitmap callbacks are ignored
+    this.currentUrl = '__disposed__';
+    this.onAspectRatioReady = null;
     for (const [, tex] of this.cache.entries()) {
       tex.dispose();
     }

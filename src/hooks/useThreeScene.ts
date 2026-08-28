@@ -25,6 +25,12 @@ interface UseThreeSceneParams {
   tooltipFieldsParsed: TooltipFieldDef[];
   selectMachine: (name: string | null) => void;
   setHudMachine: (name: string | null) => void;
+  placementMode?: string | null;
+  placeMachineAt?: (x: number, z: number) => void;
+  toggleGroupSelection?: (name: string) => void;
+  clearGroupSelection?: () => void;
+  anchorMode?: 'A' | 'B' | null;
+  onFloorClickedForAnchor?: (u: number, v: number) => void;
 }
 
 export function useThreeScene({
@@ -43,6 +49,12 @@ export function useThreeScene({
   tooltipFieldsParsed,
   selectMachine,
   setHudMachine,
+  placementMode,
+  placeMachineAt,
+  toggleGroupSelection,
+  clearGroupSelection,
+  anchorMode,
+  onFloorClickedForAnchor,
 }: UseThreeSceneParams) {
   const mountRef = useRef<HTMLDivElement>(null);
   const labelsContainerRef = useRef<HTMLDivElement>(null);
@@ -61,8 +73,32 @@ export function useThreeScene({
   const machinesRef = useRef<Map<string, THREE.Mesh>>(new Map());
   const floorMeshRef = useRef<THREE.Mesh | null>(null);
   const gridHelperRef = useRef<THREE.GridHelper | null>(null);
-  const dControlsRef = useRef<DragControls | null>(null);
-  const lastDragEnd = useRef(0);
+    const dControlsRef = useRef<DragControls | null>(null);
+
+  // Layout Feature Refs
+  const placementModeRef = useRef(placementMode);
+  const ghostMeshRef = useRef<THREE.Mesh | null>(null);
+  const snapHighlightRef = useRef<THREE.Mesh | null>(null);
+  const placeMachineAtRef = useRef(placeMachineAt);
+  const anchorModeRef = useRef(anchorMode);
+  const onFloorClickedForAnchorRef = useRef(onFloorClickedForAnchor);
+  
+  // Callback Refs to avoid stale closures
+  const selectMachineRef = useRef(selectMachine);
+  const setHudMachineRef = useRef(setHudMachine);
+  const toggleGroupSelectionRef = useRef(toggleGroupSelection);
+  const clearGroupSelectionRef = useRef(clearGroupSelection);
+
+  useEffect(() => {
+    placementModeRef.current = placementMode;
+    placeMachineAtRef.current = placeMachineAt;
+    anchorModeRef.current = anchorMode;
+    onFloorClickedForAnchorRef.current = onFloorClickedForAnchor;
+    selectMachineRef.current = selectMachine;
+    setHudMachineRef.current = setHudMachine;
+    toggleGroupSelectionRef.current = toggleGroupSelection;
+    clearGroupSelectionRef.current = clearGroupSelection;
+  }, [placementMode, placeMachineAt, anchorMode, onFloorClickedForAnchor, selectMachine, setHudMachine, toggleGroupSelection, clearGroupSelection]);
 
   const fieldConfigRef = useRef(fieldConfig);
   const themeRef = useRef(theme);
@@ -90,15 +126,17 @@ export function useThreeScene({
     }
   };
 
-  // Sync preset from options
+  // Sync preset from options ONLY when the dashboard author changes it
+  const prevPresetRef = useRef<CameraMode | undefined>(options.cameraPreset);
   useEffect(() => {
-    if (options.cameraPreset && options.cameraPreset !== camMode) {
+    if (options.cameraPreset && options.cameraPreset !== prevPresetRef.current) {
+      prevPresetRef.current = options.cameraPreset;
       setCamMode(options.cameraPreset);
       if (cameraRigRef.current && sceneReady) {
         cameraRigRef.current.setMode(options.cameraPreset, options.floorSize || 50);
       }
     }
-  }, [options.cameraPreset, options.floorSize, sceneReady, camMode]);
+  }, [options.cameraPreset, options.floorSize, sceneReady]);
 
   // Floorplan Texture
   useEffect(() => {
@@ -107,24 +145,33 @@ export function useThreeScene({
     }
   }, [options.floorplanUrl, sceneReady]);
 
-  // Grid
-  useEffect(() => {
+  // Grid & Snap Helper
+  const rebuildGrid = () => {
     const scene = sceneRef.current;
     if (!scene) return;
+    
     if (gridHelperRef.current) {
       scene.remove(gridHelperRef.current);
+      gridHelperRef.current.dispose();
       gridHelperRef.current = null;
     }
-    if (options.enableGrid) {
-      const gs = Math.max(0.1, options.gridSize || 1);
+    
+    if (options.enableEditMode && options.showSnapGrid !== false && options.enableSnap !== false) {
+      const gs = Math.max(0.1, options.snapSize || 1);
       const fSize = Math.max(10, options.floorSize || 50);
-      const divisions = Math.round(fSize / gs);
-      const helper = new THREE.GridHelper(fSize, divisions, 0x3a3a4a, 0x2a2a3a);
-      helper.position.y = 0.01;
+      const aspect = floorAspectRef.current || 1;
+      const gridSize = Math.max(fSize * aspect, fSize);
+      const divisions = Math.min(Math.round(gridSize / gs), 400); // cap divisions to avoid lag
+      const helper = new THREE.GridHelper(gridSize, divisions, 0x334155, 0x1e293b);
+      helper.position.y = 0.01; 
       scene.add(helper);
       gridHelperRef.current = helper;
     }
-  }, [options.enableGrid, options.gridSize, options.floorSize, sceneReady]);
+  };
+
+  useEffect(() => {
+    rebuildGrid();
+  }, [options.enableEditMode, options.showSnapGrid, options.enableSnap, options.snapSize, options.floorSize, sceneReady]);
 
   // Edit Mode DragControls
   useEffect(() => {
@@ -142,11 +189,14 @@ export function useThreeScene({
     }
   }, [width, height]);
 
-  // Floor scale
+  // Floor scale — preserve aspect ratio when floorSize changes
+  const floorAspectRef = useRef<number>(1);
   useEffect(() => {
     if (floorMeshRef.current) {
       const fSize = Math.max(10, options.floorSize || 50);
-      floorMeshRef.current.scale.set(fSize, fSize, 1);
+      // BUG FIX (MEDIUM): Apply stored aspect ratio so resizing floorSize
+      // doesn't destroy the texture aspect ratio correction
+      floorMeshRef.current.scale.set(fSize * floorAspectRef.current, fSize, 1);
     }
   }, [options.floorSize, sceneReady]);
 
@@ -220,7 +270,41 @@ export function useThreeScene({
     scene.add(floor);
     floorMeshRef.current = floor;
 
+    // Feature 2: Placement Ghost Mesh
+    const ghostMesh = new THREE.Mesh(
+      new THREE.BoxGeometry(1, 1, 1),
+      new THREE.MeshStandardMaterial({ color: 0x00ff87, transparent: true, opacity: 0.4, wireframe: false })
+    );
+    ghostMesh.visible = false;
+    scene.add(ghostMesh);
+    ghostMeshRef.current = ghostMesh;
+
+    // Feature 4: Snap Highlight Mesh
+    const snapHighlight = new THREE.Mesh(
+      new THREE.PlaneGeometry(1, 1),
+      new THREE.MeshBasicMaterial({ color: 0x00ff87, transparent: true, opacity: 0.15, side: THREE.DoubleSide })
+    );
+    snapHighlight.rotation.x = -Math.PI / 2;
+    snapHighlight.position.y = 0.02;
+    snapHighlight.visible = false;
+    scene.add(snapHighlight);
+    snapHighlightRef.current = snapHighlight;
+
     const textureManager = new TextureManager(floorMat, renderer);
+
+    // BUG FIX (MEDIUM): Correct floor plane aspect ratio once bitmap is decoded.
+    // Previously the floor was always a perfect square (fSize x fSize), which
+    // warped rectangular floorplan images (e.g. 16:9). Now we rescale the X-axis
+    // to match the image's true width/height ratio.
+    textureManager.onAspectRatioReady = (aspect: number) => {
+      floorAspectRef.current = aspect;
+      if (floorMeshRef.current) {
+        const fSize = Math.max(10, options.floorSize || 50);
+        floorMeshRef.current.scale.set(fSize * aspect, fSize, 1);
+      }
+      rebuildGrid();
+    };
+
     textureManager.updateFloorplan(options.floorplanUrl);
     textureManagerRef.current = textureManager;
 
@@ -240,24 +324,36 @@ export function useThreeScene({
     dControls.enabled = false;
     dControls.addEventListener('dragstart', (ev) => {
       cameraRig.orbit.enabled = false;
-      selectMachine(ev.object.userData.name);
+      selectMachineRef.current(ev.object.userData.name);
     });
     dControls.addEventListener('drag', (ev) => {
       const mesh = ev.object;
-      mesh.position.y = Math.abs(mesh.scale.y) / 2;
-      if (optionsRef.current.enableSnap && optionsRef.current.gridSize) {
-        const s = optionsRef.current.gridSize;
-        mesh.position.x = Math.round(mesh.position.x / s) * s;
-        mesh.position.z = Math.round(mesh.position.z / s) * s;
+      
+      // Feature 4: Adjustable Snap-to-Grid
+      const opts = optionsRef.current;
+      if (opts.enableSnap !== false) {
+        const snap = opts.snapSize || 1;
+        mesh.position.x = Math.round(mesh.position.x / snap) * snap;
+        mesh.position.z = Math.round(mesh.position.z / snap) * snap;
       }
+      
+      // Lock Y axis so it doesn't float or sink
+      mesh.position.y = Math.abs(mesh.scale.y) / 2;
     });
     dControls.addEventListener('dragend', (ev) => {
       cameraRig.orbit.enabled = true;
-      lastDragEnd.current = Date.now();
       const mesh = ev.object;
+      const opts = optionsRef.current;
+
+      // Snap the final position before saving
+      if (opts.enableSnap !== false) {
+        const snap = opts.snapSize || 1;
+        mesh.position.x = Math.round(mesh.position.x / snap) * snap;
+        mesh.position.z = Math.round(mesh.position.z / snap) * snap;
+      }
+
       const name = mesh.userData.name;
       const fn = onOptionsChangeRef.current;
-      const opts = optionsRef.current;
       if (name && fn) {
         const newConfigs = { ...(opts.machineConfigs || {}) };
         newConfigs[name] = { ...newConfigs[name], x: mesh.position.x, z: mesh.position.z };
@@ -282,7 +378,6 @@ export function useThreeScene({
 
     const onPointerUp = (e: PointerEvent) => {
       if (e.button !== 0) return;
-      if (Date.now() - lastDragEnd.current < 150) return;
 
       const dx = Math.abs(e.clientX - pointerDownPos.x);
       const dy = Math.abs(e.clientY - pointerDownPos.y);
@@ -291,6 +386,45 @@ export function useThreeScene({
       if (dx < 6 && dy < 6 && dt < 450) {
         getMouseNDC(e);
         raycaster.setFromCamera(mouse, camera);
+
+        // Feature 1: Anchor Mode Logic
+        if (optionsRef.current.enableEditMode && anchorModeRef.current) {
+          const floorHits = raycaster.intersectObject(floorMeshRef.current!);
+          if (floorHits.length > 0) {
+            const hit = floorHits[0];
+            const imageU = hit.uv?.x ?? 0;
+            const imageV = 1 - (hit.uv?.y ?? 0); // Three.js UV is bottom-up, invert to top-down
+            if (onFloorClickedForAnchorRef.current) {
+              onFloorClickedForAnchorRef.current(imageU, imageV);
+            }
+          }
+          return;
+        }
+
+        // Feature 2: Placement Mode Logic
+        if (optionsRef.current.enableEditMode && placementModeRef.current) {
+          const floorHits = raycaster.intersectObject(floorMeshRef.current!);
+          if (floorHits.length > 0) {
+            const point = floorHits[0].point;
+            let snappedX = point.x;
+            let snappedZ = point.z;
+            const snap = optionsRef.current.snapSize || 1;
+            
+            if (optionsRef.current.enableSnap !== false) {
+              snappedX = Math.round(point.x / snap) * snap;
+              snappedZ = Math.round(point.z / snap) * snap;
+            }
+            
+            if (placeMachineAtRef.current) {
+              placeMachineAtRef.current(snappedX, snappedZ);
+            }
+            
+            if (ghostMeshRef.current) ghostMeshRef.current.visible = false;
+            if (snapHighlightRef.current) snapHighlightRef.current.visible = false;
+          }
+          return; // Skip normal selection
+        }
+
         const hits = raycaster.intersectObjects(meshesArrayRef.current);
 
         if (hits.length > 0) {
@@ -299,7 +433,7 @@ export function useThreeScene({
 
           if (!optionsRef.current.enableEditMode) {
             if (optionsRef.current.showHUD !== false) {
-              setHudMachine(name);
+              setHudMachineRef.current(name);
             }
             cameraRig.focusOn(hitMesh.position, Math.max(hitMesh.scale.x, hitMesh.scale.z) * 3 + 5);
 
@@ -308,11 +442,21 @@ export function useThreeScene({
               window.open(url, '_blank', 'noopener');
             }
           } else {
-            selectMachine(name);
+            // Edit Mode Selection
+            if (e.shiftKey) {
+              if (toggleGroupSelectionRef.current) toggleGroupSelectionRef.current(name);
+            } else {
+              if (clearGroupSelectionRef.current) clearGroupSelectionRef.current();
+              selectMachineRef.current(name);
+            }
           }
         } else {
-          if (!optionsRef.current.enableEditMode) setHudMachine(null);
-          else selectMachine(null);
+          if (!optionsRef.current.enableEditMode) {
+            setHudMachineRef.current(null);
+          } else {
+            if (!e.shiftKey && clearGroupSelectionRef.current) clearGroupSelectionRef.current();
+            selectMachineRef.current(null);
+          }
         }
       }
     };
@@ -320,13 +464,59 @@ export function useThreeScene({
     renderer.domElement.addEventListener('pointerdown', onPointerDown);
     renderer.domElement.addEventListener('pointerup', onPointerUp);
 
+    // PERF FIX (CRITICAL): Throttle raycaster to max ~30fps (33ms).
+    // Without throttle, every single mousemove event triggers a full raycast
+    // against all meshes — catastrophic on scenes with 100+ machines.
+    let lastMouseMoveTime = 0;
     const onMouseMove = (event: MouseEvent) => {
+      const now = performance.now();
+      if (now - lastMouseMoveTime < 33) { return; } // ~30fps throttle
+      lastMouseMoveTime = now;
+
+      getMouseNDC(event);
+      raycaster.setFromCamera(mouse, camera);
+
+      // Feature 2 & 4: Placement Ghost and Snap Highlight
+      if (optionsRef.current.enableEditMode) {
+        const floorHits = raycaster.intersectObject(floorMeshRef.current!);
+        if (floorHits.length > 0) {
+          const point = floorHits[0].point;
+          const opts = optionsRef.current;
+          const snap = opts.snapSize || 1;
+          let snappedX = point.x;
+          let snappedZ = point.z;
+          
+          if (opts.enableSnap !== false) {
+            snappedX = Math.round(point.x / snap) * snap;
+            snappedZ = Math.round(point.z / snap) * snap;
+          }
+
+          // Update Snap Highlight
+          if (snapHighlightRef.current) {
+            snapHighlightRef.current.scale.set(snap, snap, 1);
+            snapHighlightRef.current.position.set(snappedX, 0.02, snappedZ);
+            snapHighlightRef.current.visible = opts.enableSnap !== false;
+          }
+
+          // Update Ghost Mesh
+          if (placementModeRef.current && ghostMeshRef.current) {
+            ghostMeshRef.current.visible = true;
+            ghostMeshRef.current.scale.set(opts.boxWidth || 2, opts.boxHeight || 1, opts.boxDepth || 2);
+            ghostMeshRef.current.position.set(snappedX, (opts.boxHeight || 1) / 2, snappedZ);
+          } else if (ghostMeshRef.current) {
+            ghostMeshRef.current.visible = false;
+          }
+        }
+      } else {
+        if (snapHighlightRef.current) snapHighlightRef.current.visible = false;
+        if (ghostMeshRef.current) ghostMeshRef.current.visible = false;
+      }
+
       if (optionsRef.current.enableTooltip === false) {
         tooltip.style.display = 'none';
         return;
       }
-      getMouseNDC(event);
-      raycaster.setFromCamera(mouse, camera);
+
       const hits = raycaster.intersectObjects(meshesArrayRef.current);
 
       if (hits.length > 0) {
@@ -353,8 +543,8 @@ export function useThreeScene({
         const rect = renderer.domElement.getBoundingClientRect();
         let tx = event.clientX - rect.left + 18;
         let ty = event.clientY - rect.top + 18;
-        if (tx + 290 > rect.width) tx = event.clientX - rect.left - 295;
-        if (ty + 180 > rect.height) ty = event.clientY - rect.top - 185;
+        if (tx + 290 > rect.width) { tx = event.clientX - rect.left - 295; }
+        if (ty + 180 > rect.height) { ty = event.clientY - rect.top - 185; }
 
         tooltip.innerHTML = `
           <div style="font-size:14px;font-weight:800;color:#fff;border-bottom:1px solid rgba(255,255,255,0.14);padding-bottom:6px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center">

@@ -49,20 +49,22 @@ export const CameraToolbar: React.FC<Props> = ({ currentMode, onSwitchMode, onRe
       >
         📐 2D Plan
       </button>
+      {/* 
       <button
         onClick={() => onSwitchMode('walkthrough')}
         className={cx(styles.camBtn, currentMode === 'walkthrough' && styles.camBtnActive)}
-        title="โหมดเดินสำรวจโรงงานเสมือนจริงด้วยปุ่ม W, A, S, D"
+        title="เดินชมโรงงาน (WASD)"
       >
         🚶‍♂️ Walk (WASD)
-      </button>
+      </button> 
+      */}
       <button
         onClick={onReset}
         className={styles.camBtn}
         title="รีเซ็ตมุมกล้องกลับจุดเริ่มต้น"
         style={{ borderLeft: '1px solid rgba(255,255,255,0.15)', paddingLeft: 8 }}
       >
-        🎯 Reset
+        🎯 ResetCamera
       </button>
     </div>
   );
