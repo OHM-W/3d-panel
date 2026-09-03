@@ -1,8 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
+import * as THREE from 'three';
 import { PanelProps } from '@grafana/data';
 import { SimpleOptions, AlarmSeverity } from '../types';
 import { css, cx } from '@emotion/css';
 import { useStyles2, useTheme2 } from '@grafana/ui';
+import { AlarmRenderer } from '../engine/AlarmRenderer';
 
 // Custom Hooks
 import { useThreeScene } from '../hooks/useThreeScene';
@@ -59,7 +61,10 @@ export const SimplePanel: React.FC<Props> = ({ options, data, width, height, onO
   // State
   const [hudMachine, setHudMachine] = useState<string | null>(null);
 
-  // Telemetry Maps
+  // Unified Shared 3D & Telemetry Refs
+  const machinesRef = useRef<Map<string, THREE.Mesh>>(new Map());
+  const meshesArrayRef = useRef<THREE.Mesh[]>([]);
+  const alarmRendererRef = useRef<AlarmRenderer | null>(null);
   const sqlColumnsRef = useRef<Map<string, Map<string, number>>>(new Map());
   const statusRef = useRef<Map<string, number | undefined>>(new Map());
   const severityRef = useRef<Map<string, AlarmSeverity>>(new Map());
@@ -72,12 +77,12 @@ export const SimplePanel: React.FC<Props> = ({ options, data, width, height, onO
   const layout = useMachineLayout({
     optionsRef,
     onOptionsChangeRef,
-    machinesRef: useRef(new Map()),
+    machinesRef,
     labelsRef,
     statusRef,
     severityRef,
     lotoRef,
-    alarmRendererRef: useRef(null),
+    alarmRendererRef,
   });
 
   // 2. Three.js Engine & Canvas Hook
@@ -106,9 +111,10 @@ export const SimplePanel: React.FC<Props> = ({ options, data, width, height, onO
     selectedMachine: layout.selectedMachine,
     anchorMode: layout.anchorMode,
     onFloorClickedForAnchor: layout.onFloorClickedForAnchor,
+    machinesRef,
+    meshesArrayRef,
+    alarmRendererRef,
   });
-
-  const { machinesRef, meshesArrayRef, alarmRendererRef } = scene;
 
   // 3. DataFrame Data Sync Hook
   useDataFrameSync({
@@ -167,7 +173,7 @@ export const SimplePanel: React.FC<Props> = ({ options, data, width, height, onO
 
       {/* 🏷️ 3. Floating 2D Status Labels Container */}
       <FloatingLabelsOverlay
-        containerRef={scene.labelsContainerRef}
+        ref={scene.labelsContainerRef}
         visible={options.showLabels !== false}
       />
 

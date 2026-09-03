@@ -1,6 +1,6 @@
 {
   "name": "3d-panel",
-  "version": "3.5.6",
+  "version": "3.6.0",
   "description": "3D Digital Twin Plugin for IMS Manufacturing",
   "scripts": {
     "build": "webpack -c ./.config/webpack/webpack.config.ts --env production",

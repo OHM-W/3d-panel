@@ -128,7 +128,7 @@ export const EditControlPanel: React.FC<Props> = ({
             <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
               <button onClick={() => onAdjustProperty(item.prop, -item.delta)} className={styles.iconBtn}>-</button>
               <span style={{ display: 'inline-block', width: 35, textAlign: 'center', fontSize: 12, fontWeight: 'bold' }}>
-                {(machineConfig as any)?.[item.prop] || 1}
+                {machineConfig?.[item.prop] ?? 1}
               </span>
               <button onClick={() => onAdjustProperty(item.prop, item.delta)} className={styles.iconBtn}>+</button>
             </div>

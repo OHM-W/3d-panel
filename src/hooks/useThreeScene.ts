@@ -8,6 +8,7 @@ import { AlarmRenderer } from '../engine/AlarmRenderer';
 import { TextureManager } from '../engine/TextureManager';
 import { escapeHTML, formatTelemetryValue, TooltipFieldDef } from '../utils/formatUtils';
 import { getStatusColor, getStatusLabel } from '../utils/statusUtils';
+import { getMarqueeSelectedMachines } from '../utils/selectionUtils';
 
 interface UseThreeSceneParams {
   options: SimpleOptions;
@@ -34,6 +35,9 @@ interface UseThreeSceneParams {
   selectedMachine?: string | null;
   anchorMode?: 'A' | 'B' | null;
   onFloorClickedForAnchor?: (u: number, v: number) => void;
+  machinesRef?: MutableRefObject<Map<string, THREE.Mesh>>;
+  meshesArrayRef?: MutableRefObject<THREE.Mesh[]>;
+  alarmRendererRef?: MutableRefObject<AlarmRenderer | null>;
 }
 
 export function useThreeScene({
@@ -61,6 +65,9 @@ export function useThreeScene({
   selectedMachine,
   anchorMode,
   onFloorClickedForAnchor,
+  machinesRef: propMachinesRef,
+  meshesArrayRef: propMeshesArrayRef,
+  alarmRendererRef: propAlarmRendererRef,
 }: UseThreeSceneParams) {
   const mountRef = useRef<HTMLDivElement>(null);
   const labelsContainerRef = useRef<HTMLDivElement>(null);
@@ -72,11 +79,14 @@ export function useThreeScene({
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
   const cameraRigRef = useRef<CameraRig | null>(null);
-  const alarmRendererRef = useRef<AlarmRenderer | null>(null);
+  const fallbackAlarmRendererRef = useRef<AlarmRenderer | null>(null);
+  const alarmRendererRef = propAlarmRendererRef || fallbackAlarmRendererRef;
   const textureManagerRef = useRef<TextureManager | null>(null);
 
-  const meshesArrayRef = useRef<THREE.Mesh[]>([]);
-  const machinesRef = useRef<Map<string, THREE.Mesh>>(new Map());
+  const fallbackMeshesArrayRef = useRef<THREE.Mesh[]>([]);
+  const fallbackMachinesRef = useRef<Map<string, THREE.Mesh>>(new Map());
+  const meshesArrayRef = propMeshesArrayRef || fallbackMeshesArrayRef;
+  const machinesRef = propMachinesRef || fallbackMachinesRef;
   const floorMeshRef = useRef<THREE.Mesh | null>(null);
   const gridHelperRef = useRef<THREE.GridHelper | null>(null);
   const dControlsRef = useRef<DragControls | null>(null);
@@ -89,13 +99,15 @@ export function useThreeScene({
   const anchorModeRef = useRef(anchorMode);
   const onFloorClickedForAnchorRef = useRef(onFloorClickedForAnchor);
   
-  // Callback Refs to avoid stale closures
+  // Selection & Callback Refs to avoid stale closures
   const selectMachineRef = useRef(selectMachine);
   const setHudMachineRef = useRef(setHudMachine);
   const selectedGroupRef = useRef(selectedGroup);
   const setGroupSelectionRef = useRef(setGroupSelection);
   const toggleGroupSelectionRef = useRef(toggleGroupSelection);
   const clearGroupSelectionRef = useRef(clearGroupSelection);
+  const selectedMachineRef = useRef(selectedMachine);
+  const selectionBoxesRef = useRef<Map<string, THREE.BoxHelper>>(new Map());
 
   useEffect(() => {
     placementModeRef.current = placementMode;
@@ -108,24 +120,8 @@ export function useThreeScene({
     setGroupSelectionRef.current = setGroupSelection;
     toggleGroupSelectionRef.current = toggleGroupSelection;
     clearGroupSelectionRef.current = clearGroupSelection;
-  }, [placementMode, placeMachineAt, anchorMode, onFloorClickedForAnchor, selectMachine, setHudMachine, selectedGroup, setGroupSelection, toggleGroupSelection, clearGroupSelection]);
-
-  // Multi-select / Single-select Visual Emissive Highlight (Cyan Glow)
-  useEffect(() => {
-    for (const [name, mesh] of machinesRef.current.entries()) {
-      const isSelected = (selectedGroup && selectedGroup.has(name)) || name === selectedMachine;
-      const mat = mesh.material as THREE.MeshStandardMaterial;
-      if (mat && mat.emissive) {
-        if (isSelected) {
-          mat.emissive.setHex(0x00e5ff);
-          mat.emissiveIntensity = 0.6;
-        } else {
-          mat.emissive.setHex(0x000000);
-          mat.emissiveIntensity = 0.0;
-        }
-      }
-    }
-  }, [selectedGroup, selectedMachine, sceneReady]);
+    selectedMachineRef.current = selectedMachine;
+  }, [placementMode, placeMachineAt, anchorMode, onFloorClickedForAnchor, selectMachine, setHudMachine, selectedGroup, setGroupSelection, toggleGroupSelection, clearGroupSelection, selectedMachine]);
 
   const fieldConfigRef = useRef(fieldConfig);
   const themeRef = useRef(theme);
@@ -364,7 +360,7 @@ export function useThreeScene({
     const dControls = new DragControls(meshesArrayRef.current, camera, renderer.domElement);
     dControls.enabled = false;
     dControls.addEventListener('dragstart', (ev) => {
-      cameraRig.orbit.enabled = false;
+      cameraRig.setOrbitEnabled(false);
       const mesh = ev.object;
       const name = mesh.userData.name;
       selectMachineRef.current(name);
@@ -412,7 +408,7 @@ export function useThreeScene({
     });
 
     dControls.addEventListener('dragend', (ev) => {
-      cameraRig.orbit.enabled = true;
+      cameraRig.setOrbitEnabled(true);
       const mesh = ev.object;
       const name = mesh.userData.name;
       const opts = optionsRef.current;
@@ -454,18 +450,40 @@ export function useThreeScene({
       mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
     };
 
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Shift' && dControlsRef.current) {
+        dControlsRef.current.enabled = false;
+      }
+    };
+
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (e.key === 'Shift' && dControlsRef.current && !isMarquee) {
+        dControlsRef.current.enabled = optionsRef.current.enableEditMode;
+      }
+    };
+
+    const onBlur = () => {
+      if (isMarquee) {
+        isMarquee = false;
+        marquee.style.display = 'none';
+        cameraRig.setOrbitEnabled(true);
+      }
+      if (dControlsRef.current) {
+        dControlsRef.current.enabled = optionsRef.current.enableEditMode;
+      }
+    };
+
     const onPointerDown = (e: PointerEvent) => {
+      if (e.button !== 0) return;
       pointerDownPos = { x: e.clientX, y: e.clientY, time: Date.now() };
 
-      // Marquee Box Selection start in Edit Mode
-      if (optionsRef.current.enableEditMode) {
-        getMouseNDC(e);
-        raycaster.setFromCamera(mouse, camera);
-        const hits = raycaster.intersectObjects(meshesArrayRef.current);
-        if (hits.length === 0 || e.shiftKey) {
-          isMarquee = true;
-          marqueeStart = { x: e.clientX, y: e.clientY };
-          cameraRig.orbit.enabled = false;
+      // Requirement 1 & 2: Shift-only marquee box selection start in Edit Mode
+      if (optionsRef.current.enableEditMode && e.shiftKey) {
+        isMarquee = true;
+        marqueeStart = { x: e.clientX, y: e.clientY };
+        cameraRig.setOrbitEnabled(false);
+        if (dControlsRef.current) {
+          dControlsRef.current.enabled = false;
         }
       }
     };
@@ -473,11 +491,16 @@ export function useThreeScene({
     const onPointerUp = (e: PointerEvent) => {
       if (e.button !== 0) return;
 
+      // Re-enable DragControls if in edit mode
+      if (dControlsRef.current && optionsRef.current.enableEditMode) {
+        dControlsRef.current.enabled = true;
+      }
+
       // Finish Marquee Drag Selection
       if (isMarquee) {
         isMarquee = false;
         marquee.style.display = 'none';
-        cameraRig.orbit.enabled = true;
+        cameraRig.setOrbitEnabled(true);
 
         const rect = renderer.domElement.getBoundingClientRect();
         const startX = marqueeStart.x - rect.left;
@@ -490,24 +513,30 @@ export function useThreeScene({
         const minY = Math.min(startY, endY);
         const maxY = Math.max(startY, endY);
 
-        if (maxX - minX > 8 && maxY - minY > 8) {
-          const selectedNames: string[] = [];
-          const tempV = new THREE.Vector3();
-          for (const [name, mesh] of machinesRef.current.entries()) {
-            mesh.getWorldPosition(tempV);
-            tempV.project(camera);
-            const px = ((tempV.x + 1) / 2) * rect.width;
-            const py = ((-tempV.y + 1) / 2) * rect.height;
-            if (px >= minX && px <= maxX && py >= minY && py <= maxY) {
-              selectedNames.push(name);
-            }
-          }
+        if (maxX - minX > 6 || maxY - minY > 6) {
+          const selectedNames = getMarqueeSelectedMachines(
+            machinesRef.current,
+            camera,
+            rect.width,
+            rect.height,
+            { minX, maxX, minY, maxY }
+          );
+
           if (setGroupSelectionRef.current) {
-            if (e.shiftKey && selectedGroupRef.current) {
+            if (selectedGroupRef.current && selectedGroupRef.current.size > 0) {
               const union = new Set(selectedGroupRef.current);
               selectedNames.forEach(n => union.add(n));
+              if (union.size === 1) {
+                selectMachineRef.current(Array.from(union)[0]);
+              } else {
+                selectMachineRef.current(null);
+              }
               setGroupSelectionRef.current(union);
-            } else {
+            } else if (selectedNames.length === 1) {
+              selectMachineRef.current(selectedNames[0]);
+              setGroupSelectionRef.current(selectedNames);
+            } else if (selectedNames.length > 1) {
+              selectMachineRef.current(null);
               setGroupSelectionRef.current(selectedNames);
             }
           }
@@ -518,6 +547,7 @@ export function useThreeScene({
       const dx = Math.abs(e.clientX - pointerDownPos.x);
       const dy = Math.abs(e.clientY - pointerDownPos.y);
       const dt = Date.now() - pointerDownPos.time;
+      pointerDownPos = { x: -9999, y: -9999, time: 0 };
 
       if (dx < 6 && dy < 6 && dt < 450) {
         getMouseNDC(e);
@@ -597,14 +627,38 @@ export function useThreeScene({
       }
     };
 
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('keyup', onKeyUp);
+    window.addEventListener('blur', onBlur);
+    window.addEventListener('pointerup', onPointerUp);
     renderer.domElement.addEventListener('pointerdown', onPointerDown);
-    renderer.domElement.addEventListener('pointerup', onPointerUp);
 
     // PERF FIX (CRITICAL): Throttle raycaster to max ~30fps (33ms).
     // Without throttle, every single mousemove event triggers a full raycast
     // against all meshes — catastrophic on scenes with 100+ machines.
     let lastMouseMoveTime = 0;
     const onMouseMove = (event: MouseEvent) => {
+      // 1. Update 2D Marquee Selection Box during Shift+Drag
+      if (isMarquee) {
+        const rect = renderer.domElement.getBoundingClientRect();
+        const curX = event.clientX - rect.left;
+        const curY = event.clientY - rect.top;
+        const startX = marqueeStart.x - rect.left;
+        const startY = marqueeStart.y - rect.top;
+        const minX = Math.min(startX, curX);
+        const minY = Math.min(startY, curY);
+        const boxW = Math.abs(curX - startX);
+        const boxH = Math.abs(curY - startY);
+
+        marquee.style.left = `${minX}px`;
+        marquee.style.top = `${minY}px`;
+        marquee.style.width = `${boxW}px`;
+        marquee.style.height = `${boxH}px`;
+        marquee.style.display = 'block';
+        tooltip.style.display = 'none';
+        return;
+      }
+
       const now = performance.now();
       if (now - lastMouseMoveTime < 33) { return; } // ~30fps throttle
       lastMouseMoveTime = now;
@@ -723,30 +777,87 @@ export function useThreeScene({
       cameraRig.update(delta, fSize);
       alarmRenderer.animate(time);
 
+      const currentSelected = new Set<string>();
+      if (selectedMachineRef.current) currentSelected.add(selectedMachineRef.current);
+      if (selectedGroupRef.current) {
+        for (const name of selectedGroupRef.current) currentSelected.add(name);
+      }
+
+      // Synchronize 3D Selection Bounding Box Helpers (#00E5FF)
+      for (const name of currentSelected) {
+        if (!selectionBoxesRef.current.has(name)) {
+          const mesh = machinesRef.current.get(name);
+          if (mesh) {
+            const boxHelper = new THREE.BoxHelper(mesh, 0x00e5ff);
+            const mat = boxHelper.material as THREE.LineBasicMaterial;
+            mat.transparent = true;
+            mat.opacity = 0.95;
+            scene.add(boxHelper);
+            selectionBoxesRef.current.set(name, boxHelper);
+          }
+        }
+      }
+
+      // Remove stale box helpers and update active ones
+      for (const [name, box] of selectionBoxesRef.current.entries()) {
+        if (!currentSelected.has(name) || !machinesRef.current.has(name)) {
+          scene.remove(box);
+          box.geometry.dispose();
+          (box.material as THREE.Material).dispose();
+          selectionBoxesRef.current.delete(name);
+        } else {
+          box.update();
+        }
+      }
+
       for (const [name, mesh] of machinesRef.current.entries()) {
         const status = statusRef.current.get(name);
-        const mat = mesh.material as THREE.MeshStandardMaterial;
+        const isSelected = currentSelected.has(name);
 
-        if (status === 3) {
-          mat.emissive.setHex(0xef4444);
-          mat.emissiveIntensity = Math.abs(Math.sin(time * 3)) * 0.8;
-        } else if (status === 1) {
-          mat.emissive.setHex(0xf59e0b);
-          mat.emissiveIntensity = Math.abs(Math.sin(time * 0.8)) * 0.25;
-        } else if (status === 4) {
-          mat.emissive.setHex(0x0284c7);
-          mat.emissiveIntensity = 0.4;
-        } else {
-          mat.emissiveIntensity = 0;
+        // Multi-material safe high-visibility cyan emissive glow
+        const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+        for (const m of materials) {
+          if (m && 'emissive' in m && (m as THREE.MeshStandardMaterial).emissive) {
+            const stdMat = m as THREE.MeshStandardMaterial;
+            if (isSelected) {
+              stdMat.emissive.setHex(0x00e5ff);
+              stdMat.emissiveIntensity = 0.65 + Math.abs(Math.sin(time * 3)) * 0.25;
+            } else if (status === 3) {
+              stdMat.emissive.setHex(0xef4444);
+              stdMat.emissiveIntensity = Math.abs(Math.sin(time * 3)) * 0.8;
+            } else if (status === 1) {
+              stdMat.emissive.setHex(0xf59e0b);
+              stdMat.emissiveIntensity = Math.abs(Math.sin(time * 0.8)) * 0.25;
+            } else if (status === 4) {
+              stdMat.emissive.setHex(0x0284c7);
+              stdMat.emissiveIntensity = 0.4;
+            } else {
+              stdMat.emissive.setHex(0x000000);
+              stdMat.emissiveIntensity = 0;
+            }
+          }
         }
 
+        // Active 2D floating status label highlight
         const label = labelsRef.current.get(name);
         if (label && optionsRef.current.showLabels !== false) {
+          if (isSelected) {
+            label.style.borderColor = '#00e5ff';
+            label.style.boxShadow = '0 0 14px rgba(0, 229, 255, 0.7), inset 0 0 6px rgba(0, 229, 255, 0.3)';
+            label.style.background = 'rgba(0, 28, 48, 0.96)';
+            label.style.zIndex = '20';
+          } else {
+            label.style.borderColor = 'rgba(255, 255, 255, 0.18)';
+            label.style.boxShadow = 'none';
+            label.style.background = 'rgba(10, 15, 25, 0.88)';
+            label.style.zIndex = '5';
+          }
+
           tempV.copy(mesh.position);
           tempV.y += Math.abs(mesh.scale.y) / 2 + 0.6;
           tempV.project(camera);
 
-          if (tempV.z > 1) {
+          if (tempV.z < -1 || tempV.z > 1) {
             label.style.opacity = '0';
           } else {
             label.style.opacity = '1';
@@ -762,8 +873,11 @@ export function useThreeScene({
 
     return () => {
       cancelAnimationFrame(animId);
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('keyup', onKeyUp);
+      window.removeEventListener('blur', onBlur);
+      window.removeEventListener('pointerup', onPointerUp);
       renderer.domElement.removeEventListener('pointerdown', onPointerDown);
-      renderer.domElement.removeEventListener('pointerup', onPointerUp);
       renderer.domElement.removeEventListener('mousemove', onMouseMove);
       renderer.domElement.removeEventListener('webglcontextlost', onContextLost);
       renderer.domElement.removeEventListener('webglcontextrestored', onContextRestored);
@@ -775,6 +889,14 @@ export function useThreeScene({
 
       if (tooltip.parentNode) tooltip.parentNode.removeChild(tooltip);
       if (marquee.parentNode) marquee.parentNode.removeChild(marquee);
+
+      // Dispose all selection bounding boxes
+      for (const box of selectionBoxesRef.current.values()) {
+        scene.remove(box);
+        box.geometry.dispose();
+        (box.material as THREE.Material).dispose();
+      }
+      selectionBoxesRef.current.clear();
 
       // Dispose all machine meshes
       for (const mesh of machinesRef.current.values()) {

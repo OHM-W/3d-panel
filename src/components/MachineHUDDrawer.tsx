@@ -1,5 +1,6 @@
 import React from 'react';
 import { AlarmSeverity } from '../types';
+import { formatTelemetryValue } from '../utils/formatUtils';
 
 interface Props {
   machineName: string | null;
@@ -13,25 +14,6 @@ interface Props {
   statusFieldName?: string;
   dashboardUrlTemplate?: string;
   onClose: () => void;
-}
-
-function escapeHTML(str: string | number | null | undefined): string {
-  if (str === null || str === undefined) return '';
-  const s = String(str);
-  return s
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;');
-}
-
-function formatVal(val: any): string {
-  if (typeof val === 'number') {
-    if (isNaN(val)) return '—';
-    return Number.isInteger(val) ? val.toLocaleString() : val.toLocaleString(undefined, { maximumFractionDigits: 2 });
-  }
-  return escapeHTML(val ?? '—');
 }
 
 export const MachineHUDDrawer: React.FC<Props> = ({
@@ -57,7 +39,7 @@ export const MachineHUDDrawer: React.FC<Props> = ({
       extraCols.push(
         <div key={col} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <span style={{ color: '#64748b', fontSize: 11 }}>{col}</span>
-          <span style={{ color: '#cbd5e1', fontWeight: 500, fontSize: 12 }}>{formatVal(val)}</span>
+          <span style={{ color: '#cbd5e1', fontWeight: 500, fontSize: 12 }}>{formatTelemetryValue(val)}</span>
         </div>
       );
     }
@@ -110,7 +92,7 @@ export const MachineHUDDrawer: React.FC<Props> = ({
             return (
               <div key={f.column} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <span style={{ color: '#94a3b8', fontSize: 12 }}>{f.label}</span>
-                <span style={{ color: '#fff', fontWeight: 600, fontSize: 13 }}>{formatVal(val)}{f.unit ? ` ${f.unit}` : ''}</span>
+                <span style={{ color: '#fff', fontWeight: 600, fontSize: 13 }}>{formatTelemetryValue(val)}{f.unit ? ` ${f.unit}` : ''}</span>
               </div>
             );
           })}

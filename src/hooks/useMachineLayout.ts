@@ -238,6 +238,15 @@ export function useMachineLayout({
     lotoRef.current.delete(selectedMachine);
     alarmRendererRef.current?.removeMachine(selectedMachine);
 
+    if (selectedGroup.has(selectedMachine)) {
+      setSelectedGroup((prev) => {
+        const next = new Set(prev);
+        next.delete(selectedMachine);
+        next.add(newName);
+        return next;
+      });
+    }
+
     setSelectedMachine(newName);
     setRenameInput(newName);
 
@@ -265,11 +274,23 @@ export function useMachineLayout({
   };
 
   const handleDeleteSelected = () => {
-    if (!selectedMachine) { return; }
+    if (!selectedMachine && selectedGroup.size === 0) { return; }
     const opts = optionsRef.current;
     const newConfigs = { ...(opts.machineConfigs || {}) };
-    if (newConfigs[selectedMachine]) { newConfigs[selectedMachine].hidden = true; }
+
+    const toDelete = new Set<string>();
+    if (selectedMachine) toDelete.add(selectedMachine);
+    for (const name of selectedGroup) toDelete.add(name);
+
+    for (const name of toDelete) {
+      newConfigs[name] = {
+        ...(newConfigs[name] || { x: 0, z: 0, scaleX: opts.boxWidth || 2, scaleY: opts.boxHeight || 1, scaleZ: opts.boxDepth || 2, rotationY: 0 }),
+        hidden: true,
+      };
+    }
+
     selectMachine(null);
+    clearGroupSelection();
     if (onOptionsChangeRef.current) {
       onOptionsChangeRef.current({ ...opts, machineConfigs: newConfigs });
     }

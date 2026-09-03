@@ -1,6 +1,6 @@
 import { useEffect, MutableRefObject } from 'react';
 import * as THREE from 'three';
-import { PanelData } from '@grafana/data';
+import { PanelData, FieldConfigSource, GrafanaTheme2 } from '@grafana/data';
 import { SimpleOptions, MachineLayoutConfig, AlarmSeverity } from '../types';
 import { AlarmRenderer } from '../engine/AlarmRenderer';
 import { escapeHTML } from '../utils/formatUtils';
@@ -23,8 +23,8 @@ interface UseDataFrameSyncParams {
   lotoRef: MutableRefObject<Map<string, boolean>>;
   optionsRef: MutableRefObject<SimpleOptions>;
   onOptionsChangeRef: MutableRefObject<((options: SimpleOptions) => void) | undefined>;
-  fieldConfigRef: MutableRefObject<any>;
-  themeRef: MutableRefObject<any>;
+  fieldConfigRef: MutableRefObject<FieldConfigSource>;
+  themeRef: MutableRefObject<GrafanaTheme2>;
 }
 
 export function useDataFrameSync({
@@ -137,15 +137,22 @@ export function useDataFrameSync({
     // 3. Render / Update 3D Meshes
     const currentConfigNames = Object.keys(configs);
     for (const name of currentConfigNames) {
-      const cfg = configs[name];
+      const cfg = configs[name] || { x: 0, z: 0, scaleX: 2, scaleY: 1, scaleZ: 2, rotationY: 0 };
+      const sx = typeof cfg.scaleX === 'number' && Number.isFinite(cfg.scaleX) ? cfg.scaleX : (opts.boxWidth || 2);
+      const sy = typeof cfg.scaleY === 'number' && Number.isFinite(cfg.scaleY) ? cfg.scaleY : (opts.boxHeight || 1);
+      const sz = typeof cfg.scaleZ === 'number' && Number.isFinite(cfg.scaleZ) ? cfg.scaleZ : (opts.boxDepth || 2);
+      const x = typeof cfg.x === 'number' && Number.isFinite(cfg.x) ? cfg.x : 0;
+      const z = typeof cfg.z === 'number' && Number.isFinite(cfg.z) ? cfg.z : 0;
+      const rotY = typeof cfg.rotationY === 'number' && Number.isFinite(cfg.rotationY) ? cfg.rotationY : 0;
+
       if (!machinesRef.current.has(name)) {
         const geo = new THREE.BoxGeometry(1, 1, 1);
         const mat = new THREE.MeshStandardMaterial({ roughness: 0.3, metalness: 0.2 });
         const mesh = new THREE.Mesh(geo, mat);
         mesh.castShadow = true; mesh.receiveShadow = true;
-        mesh.position.set(cfg.x, cfg.scaleY / 2, cfg.z);
-        mesh.scale.set(cfg.scaleX, cfg.scaleY, cfg.scaleZ);
-        mesh.rotation.y = cfg.rotationY || 0;
+        mesh.position.set(x, Math.abs(sy) / 2, z);
+        mesh.scale.set(sx, sy, sz);
+        mesh.rotation.y = rotY;
         mesh.userData = { name };
         scene.add(mesh);
         machinesRef.current.set(name, mesh);
@@ -164,9 +171,9 @@ export function useDataFrameSync({
         labelsRef.current.set(name, label);
       } else {
         const mesh = machinesRef.current.get(name)!;
-        mesh.scale.set(cfg.scaleX, cfg.scaleY, cfg.scaleZ);
-        mesh.position.y = Math.abs(cfg.scaleY) / 2;
-        mesh.rotation.y = cfg.rotationY || 0;
+        mesh.scale.set(sx, sy, sz);
+        mesh.position.set(x, Math.abs(sy) / 2, z);
+        mesh.rotation.y = rotY;
       }
     }
 
@@ -204,7 +211,12 @@ export function useDataFrameSync({
       statusRef.current.set(name, rawStatus);
 
       const hexColor = getStatusColor(rawStatus, fieldConfigRef.current, themeRef.current);
-      (mesh.material as THREE.MeshStandardMaterial).color.set(hexColor);
+      const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+      for (const m of materials) {
+        if (m && 'color' in m && (m as THREE.MeshStandardMaterial).color) {
+          (m as THREE.MeshStandardMaterial).color.set(hexColor);
+        }
+      }
 
       alarmRendererRef.current?.updateMachineVisuals(
         name, mesh, rawStatus, severity, isLOTO,

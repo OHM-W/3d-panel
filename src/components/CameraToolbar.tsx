@@ -49,15 +49,13 @@ export const CameraToolbar: React.FC<Props> = ({ currentMode, onSwitchMode, onRe
       >
         📐 2D Plan
       </button>
-      {/* 
       <button
         onClick={() => onSwitchMode('walkthrough')}
         className={cx(styles.camBtn, currentMode === 'walkthrough' && styles.camBtnActive)}
         title="เดินชมโรงงาน (WASD)"
       >
         🚶‍♂️ Walk (WASD)
-      </button> 
-      */}
+      </button>
       <button
         onClick={onReset}
         className={styles.camBtn}
